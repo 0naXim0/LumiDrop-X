@@ -27,7 +27,7 @@ The screenshots below show the main product flows in the same order as the app e
   <img src="screenshots/overview/transfer-two-devices.png" alt="LumiDrop X Android and mobile web client connected together" width="32%" />
 </p>
 
-<p align="center"><sub>Home and nearby devices · Quick Send · Android plus mobile web client</sub></p>
+<p align="center"><sub>Home and nearby devices · Android App plus mobile/PC web client</sub></p>
 
 ### 2. Choose content and review transfers
 
@@ -37,7 +37,7 @@ The screenshots below show the main product flows in the same order as the app e
 <img src="screenshots/overview/connected-device-bottom.png" alt="LumiDrop X quick send screen with selected files" width="32%" />
 </p>
 
-<p align="center"><sub>File picker · Transfers tab · Desktop web client</sub></p>
+<p align="center"><sub>File picker · Transfers tab · Queue then Send! or Quick Send IT!</sub></p>
 
 ## Download
 
