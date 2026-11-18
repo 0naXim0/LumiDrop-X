@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ── GOAT-PASS 7 Part 2 (§2B): the search result's LOCATE affordance. ──────
+     A dedicated "open this item's location" glyph — a minimal locate/target
+     mark (ring + center dot + four alignment ticks), drawn in the app's own
+     24dp stroke language (1.65dp round caps, matching ic_arrow_forward and
+     ic_chevron_right's ink weight) so it reads as family while being
+     unmistakably DIFFERENT from the chevron, whose established meaning in
+     this sheet is "open the selected folder". Tinted accent_light at render,
+     exactly like the affordance it replaces. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- The ring -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,4.8 a7.2,7.2 0 1,0 0.01,0" />
+    <!-- The center dot -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10.55,12 a1.45,1.45 0 1,0 2.9,0 a1.45,1.45 0 1,0 -2.9,0" />
+    <!-- The four alignment ticks -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,1.9 L12,4.1 M12,19.9 L12,22.1 M1.9,12 L4.1,12 M19.9,12 L22.1,12" />
+</vector>

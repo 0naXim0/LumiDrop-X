@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Format icon: generic DOCUMENT (doc/docx/txt/md/rtf/odt).
+     Post-v1.0 §static-format-icons: replaces ic_edit (a pencil) as the
+     documents glyph — a pencil says "edit this", not "this is a
+     document". Page with folded corner + three text lines; stroke style
+     matches the app's 24dp family (1.7 stroke, round caps/joins). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M14,2.5 L6.5,2.5 C5.7,2.5 5,3.2 5,4 L5,20 C5,20.8 5.7,21.5 6.5,21.5 L17.5,21.5 C18.3,21.5 19,20.8 19,20 L19,7.5 L14,2.5 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,2.5 L14,6.6 C14,7.1 14.4,7.5 14.9,7.5 L19,7.5 Z"/>
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M8.2,11.5 L15.8,11.5 M8.2,15 L15.8,15 M8.2,18.2 L12.6,18.2"/>
+</vector>

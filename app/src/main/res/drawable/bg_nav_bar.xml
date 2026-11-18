@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18: was a flush, edge-to-edge rectangle with a 1dp top inset for
+     a content-fade blend. The nav bar now floats as a full pill (see
+     activity_main.xml margins) with its own drop shadow, so the fade-blend
+     is gone and the shape is fully rounded — radius_pill safely exceeds
+     half the bar's own height, so Android clamps it to a true capsule
+     regardless of the exact height in nav_bar_height.
+
+     GOAT v2: added a stroke. bg_dialog.xml already has one at full
+     border_subtle opacity — that's the "refined outline" reference the
+     brief points back to. This is the same idea scaled down: a much
+     fainter white hairline rather than the dialog's more visible grey,
+     since a surface that's on screen permanently needs a lighter touch
+     than something that appears temporarily over content.
+
+     Pass-15 put a vertical tonal gradient INSIDE the bar (startColor/
+     centerColor/endColor over bg_nav). Pass-16 removes it completely, per
+     direct feedback: the bar's surface is back to the flat bg_nav fill it
+     always had — and the gradient/fade effect MOVED underneath the bar,
+     at the bottom, as bg_nav_under_gradient.xml (a dark, in-family fade
+     from transparent down to the app's own bg_deep, darker than the old
+     grayish in-bar tones). BottomNavBar.kt keeps referencing this
+     drawable unchanged. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_pill"/>
+    <solid android:color="@color/bg_nav"/>
+    <stroke android:width="@dimen/stroke_hairline" android:color="@color/border_hairline_light"/>
+</shape>

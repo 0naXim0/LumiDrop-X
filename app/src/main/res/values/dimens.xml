@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LumiDrop X — layout grid & shape tokens (Phase 15-17, updated Phase 18).
+    New layouts must reference these instead of inlining dp literals so the
+    whole app can be re-tuned from one place. Kotlin-side equivalents (used
+    where a resource id would be awkward — inside a programmatically built
+    GradientDrawable, for instance) live in ui/UiTokens.kt and are kept in
+    sync with the values below by convention.
+-->
+<resources>
+    <!-- Corner radii -->
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">16dp</dimen>     <!-- Phase 18: was 14dp — matches the prototype's input/button radius -->
+    <dimen name="radius_lg">20dp</dimen>
+    <dimen name="radius_xl">28dp</dimen>
+    <dimen name="radius_xxl">32dp</dimen>    <!-- Phase 18, new: card radius, per LumiDropCard in the prototype -->
+    <dimen name="radius_pill">999dp</dimen>
+
+    <!-- Spacing scale -->
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">24dp</dimen>
+    <dimen name="space_xxl">32dp</dimen>
+
+    <!-- Elevation. Phase 18 moves from the old flat-card look toward the
+         prototype's more pronounced shadows. The prototype's own numbers
+         (e.g. shadow elevation = 36.dp on the nav bar) are Compose values
+         and don't port 1:1 — Compose's shadow() and the classic View
+         elevation/outline shadow are different rendering models at
+         different visual scales — so these are re-tuned for View's model
+         rather than copied literally. Worth an eyeball pass once built. -->
+    <dimen name="elevation_card">4dp</dimen>      <!-- was 0dp -->
+    <dimen name="elevation_raised">3dp</dimen>
+    <dimen name="elevation_nav">22dp</dimen>      <!-- was 10dp pre-Phase-18, 16dp in the first pass; bumped again
+                                                        for a more clearly visible shadow, short of anything
+                                                        heavy-handed -->
+    <dimen name="elevation_sheet">12dp</dimen>
+    <dimen name="elevation_blackout">32dp</dimen> <!-- GOAT v2 fix: blackoutOverlay had no elevation at all
+                                                        (implicit 0dp), so the nav bar's own 22dp elevation put
+                                                        it ABOVE the overlay in Android's z-ordering regardless
+                                                        of their document order in the XML — the nav bar (and
+                                                        the floating popup, elevation_card=4dp) stayed visible
+                                                        through what was meant to be a full blackout. Deliberately
+                                                        set well above every other elevated surface in the app,
+                                                        not just barely above the nav bar, so it stays correct if
+                                                        any of those values change later. -->
+
+    <!-- Touch targets & icon sizes -->
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="icon_size_xs">14dp</dimen>
+    <dimen name="icon_size_sm">16dp</dimen>
+    <dimen name="icon_size_md">20dp</dimen>
+    <dimen name="icon_size_lg">24dp</dimen>
+    <dimen name="icon_size_xl">32dp</dimen>
+
+    <!-- Send screen card sizing. Phase 18 V8 (GOAT pass): dropped
+         send_card_height entirely — Server and Quick Share are pure
+         wrap_content now, sized by their own (tightened) content instead
+         of a shared constant standing in for "equal enough." Connected
+         Devices keeps a floor since it's the one card whose empty state
+         (illustration + text) genuinely needs a minimum to not look
+         cramped, but the floor itself is lower now that the two cards
+         above it take less room by default. -->
+    <dimen name="devices_card_min_height">220dp</dimen> <!-- was 300dp -->
+    <dimen name="devices_empty_illustration_size">96dp</dimen> <!-- was the prototype's 120dp fixed; a modest
+                                                          reduction (not the "excessive" shrink the brief warned
+                                                          against) that helps the empty state fit its floor
+                                                          comfortably on shorter screens too -->
+
+    <!-- Navigation -->
+    <dimen name="nav_bar_height">52dp</dimen>       <!-- Pass-20: 60dp → 52dp — the thinner, cleaner bar asked for.
+                                                          Pill (32dp) + 1dp label gap + ~13dp label = 46dp of
+                                                          content, comfortably inside 52dp with breathing room
+                                                          top and bottom; the bar reads slim and balanced without
+                                                          going near the 48dp minimum touch target. The bar's own
+                                                          bottom margin (12dp) is deliberately UNTOUCHED. -->
+    <dimen name="nav_bar_clearance">78dp</dimen>    <!-- bar height + its own bottom margin + breathing room. Use
+                                                          for content/floating-popup bottom margins, NOT
+                                                          nav_bar_height directly: the bar floats with its own
+                                                          inset instead of docking flush, so the two aren't the
+                                                          same number. Tracks nav_bar_height 1:1 (down 8dp with
+                                                          it in Pass-20) — margin and breathing room themselves
+                                                          unchanged. -->
+    <dimen name="nav_gradient_band_height">88dp</dimen> <!-- Pass-20: the under-bar gradient band, now TALLER than
+                                                          the bar's own footprint (bar 52dp + 12dp margin = 64dp;
+                                                          +24dp of visible upward fade above the bar = 88dp) so
+                                                          the fade reads as a smooth halo behind the bar instead
+                                                          of a sliver in the 12dp gap. Anchored to the screen's
+                                                          bottom edge, behind the bar. -->
+    <dimen name="nav_item_radius">24dp</dimen>      <!-- Phase 18, new: ripple bound per nav item -->
+    <dimen name="nav_pill_width">64dp</dimen>       <!-- Phase 18, new: selected-item indicator pill -->
+    <dimen name="nav_pill_height">32dp</dimen>
+
+    <!-- Strokes -->
+    <dimen name="stroke_hairline">1dp</dimen>
+
+    <dimen name="edge_fade_size">18dp</dimen>
+</resources>

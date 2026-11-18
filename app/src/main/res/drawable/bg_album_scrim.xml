@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-6 (R-D — album cover scrim): the media picker's album cards are
+     full-bleed photo covers now, with the album name and item count
+     overlaid at the bottom of the cover instead of sitting in a padded
+     text block below it (the old card-in-card look). This scrim is what
+     keeps that overlay legible on any photo: a vertical ramp from fully
+     transparent at the top of the band to ~88% black at the cover's very
+     bottom edge (angle=270 = top-to-bottom, the ramp direction Android
+     actually renders — the same discipline the Connected Devices edge
+     fades were re-fixed with in this pass). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#00000000"
+        android:endColor="#E0000000" />
+</shape>

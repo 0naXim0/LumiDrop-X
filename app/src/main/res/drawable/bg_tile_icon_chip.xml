@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.0 (§pick-icons): the Quick Share source tiles' icon chip — a soft
+     accent-tinted rounded square behind each tile's glyph (the same
+     "source chip" presentation modern file managers use for their pick
+     sources). Turns the six bare stroked glyphs (Files / Media / Folder /
+     Text / Apps / Paste) into a designed, scannable set; the Apps and
+     Files tiles specifically were called out as unprofessional. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="11dp" />
+    <solid android:color="#269172F6" />
+    <stroke android:width="1dp" android:color="#339172F6" />
+</shape>

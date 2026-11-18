@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ── GOAT-PASS 10 (PART 1.2): the XAPK-family file icon — the package ──
+     CONTAINER, visually distinct from the ordinary ic_file_apk. Same
+     line-styled corner-folded document silhouette the whole file family
+     shares (byte-identical sheet geometry), carrying a STACKED-BLOCKS
+     package mark at its center: a lower primary block and a smaller offset
+     upper block — "one container, several packages inside", i.e. the
+     multi-APK bundle XAPK/APKM/APKS all are. Tinted by FormatIcons with
+     the same Android-family green (R.color.green) — consistent with the
+     APK family cue while the mark itself (blocks vs. single robot head)
+     makes the two unmissable at 16-20dp. Used for .xapk, .apkm and .apks
+     (one coherent "package archive" visual category, per the requirement
+     to avoid inventing an icon per internal variation). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- the family's shared document sheet + corner fold (ic_file geometry) -->
+    <path
+        android:strokeColor="#FFFFFF" android:strokeWidth="1.7"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M6,2.5 L14,2.5 L18.5,7 L18.5,21.5 L6,21.5 Z" />
+    <path
+        android:strokeColor="#FFFFFF" android:strokeWidth="1.7"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14,2.5 L14,7 L18.5,7" />
+    <!-- the stacked-blocks container mark -->
+    <path
+        android:strokeColor="#FFFFFF" android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8.6,16.2 L8.6,12.4 L15.4,12.4 L15.4,16.2 Z" />
+    <path
+        android:strokeColor="#FFFFFF" android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M10.2,10.8 L10.2,8.6 L13.8,8.6 L13.8,10.8" />
+</vector>

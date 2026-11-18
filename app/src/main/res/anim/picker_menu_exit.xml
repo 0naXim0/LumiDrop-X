@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ GOAT-PASS 9 (build repair): the picker menu's dropdown animation, EXIT ══
+     The quick counterpart of picker_menu_enter: a short 4%-of-height upward
+     translate with an accelerate fade-out, 100ms — the classic fast-out of a
+     system dropdown dismissing. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="100"
+    android:fillAfter="false"
+    android:interpolator="@android:anim/accelerate_interpolator">
+    <translate
+        android:fromYDelta="0%"
+        android:toYDelta="-4%"
+        android:fillAfter="false" />
+    <alpha
+        android:fromAlpha="1"
+        android:toAlpha="0"
+        android:fillAfter="false" />
+</set>

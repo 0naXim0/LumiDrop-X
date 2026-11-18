@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18, new. bg_icon_ripple's oval mask (built for small circular
+     icon buttons elsewhere) doesn't suit a wide nav-item segment, so nav
+     items get their own rounded-rect mask at nav_item_radius instead.
+     Post-v1.0 fix (invisible content under clipToOutline on Android 14+):
+     a transparent CONTENT layer joins the mask, so RippleDrawable.
+     getOutline() — which skips the mask layer by design — resolves to a
+     real rounded rect instead of an empty outline. Drawing is unchanged
+     (transparent layer paints nothing); any view pairing this background
+     with clipToOutline now clips to the correct rounded shape instead of
+     clipping everything away on API 33+. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/overlay_press">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/nav_item_radius"/>
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/nav_item_radius"/>
+            <solid android:color="@android:color/white"/>
+        </shape>
+    </item>
+</ripple>

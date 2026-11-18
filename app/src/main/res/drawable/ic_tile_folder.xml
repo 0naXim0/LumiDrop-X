@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-12 (Required Implementation 9): the Quick Share "Folder" tile glyph,
+     rebuilt as a clean LINE-BASED OUTLINE (stroke 1.7, round caps/joins) so it
+     matches the Files / Media / Text / Apps / Paste tiles' stroke language
+     exactly. The previous SOLID filled silhouette was the one heavy glyph in
+     the set — visually louder than every neighbour and inconsistent with the
+     app's line-icon system. Classic folder geometry: tab + body, with a soft
+     rounded spine. Tinted accent_light by the tile (same as the others). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Body: from the left edge, up to the tab cut, across, down the right
+         side, and along the bottom — one continuous rounded path. -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M3.4,19.4 L3.4,6.4 C3.4,5.6 4,5 4.8,5 L9,5 C9.4,5 9.7,5.2 10,5.5 L11.3,7.1 L19.2,7.1 C20,7.1 20.6,7.7 20.6,8.5 L20.6,19.4 C20.6,20.2 20,20.8 19.2,20.8 L4.8,20.8 C4,20.8 3.4,20.2 3.4,19.4 Z"/>
+</vector>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-12 (Required Implementation: History subtab icon): the circular-arrow
+     history glyph for the Transfers tab's History pill — a counter-clockwise
+     arrow sweeping around a clock face, the universal "history / recent"
+     metaphor. Line-styled (stroke 1.7, round caps/joins) to match the app's
+     tile/file icon family; tinted at runtime like the other tab icons
+     (refreshTabStyles). Geometry adapted from the Apache-2.0 Material
+     "history" icon.
+
+     Pass-14 (per direct feedback): the pass-13 adjustment only nudged the
+     arrowhead from 12 o'clock to ~11 o'clock — still "on the top". The arrow
+     (sweep + head) is now rotated ANTI-CLOCKWISE by 90 degrees around the
+     icon's center (12,12), so the arrowhead sits on the LEFT side of the
+     circle (9 o'clock), pointing down — the direction of travel of the
+     counter-clockwise sweep, exactly as it pointed left when it sat at the
+     top. To keep the head's round caps fully inside the 24x24 viewport at
+     this horizontal position, both chevron arms are pulled in symmetrically
+     by 0.3 units (arm length 3.61 -> 3.40, still perfectly symmetric around
+     the apex; the arc radius, stroke weight, and the 270-degree sweep are
+     all untouched). Only the arrow rotates: the clock hands path below is
+     outside the group and byte-for-byte unchanged, per the explicit
+     "don't rotate the two clock hands" requirement. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group
+        android:name="arrowSweep"
+        android:pivotX="12"
+        android:pivotY="12"
+        android:rotation="-90">
+        <!-- The sweeping circular arrow: enters at the bottom, wraps
+             counter-clockwise around the face, and ends on the left. -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M3.2,12 A8.8,8.8 0 1,0 12,3.2 L9.4,3.2"/>
+        <!-- The arrow head on the incoming tail. -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M12,1.0 L9.4,3.2 L12,5.4"/>
+    </group>
+    <!-- Clock hands inside the face. -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,7.4 L12,12.2 L15.6,14.2"/>
+</vector>

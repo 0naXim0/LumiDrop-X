@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-27 (#3.3): the Queued Files counter pill, bottom-frame edition ══
+     The file-count + total-size figure of the shared card's Queued Files face,
+     carried in a small minimalist pill centered INSIDE the card's thin bottom
+     gradient frame (the 18dp band previewListWrap's bottom scroll fade also
+     occupies). The visual language is unchanged from the pill's Pass-26
+     top-row debut — the app's existing quiet chip idiom (bg_secondary fill
+     over the card surface, hairline border_subtle stroke, radius safely
+     beyond the band's half-height so it reads as a capsule) — but its height
+     is now pinned to the frame's own 18dp (includeFontPadding=false, no
+     vertical padding) so it fits the band perfectly without growing the
+     frame, the wrapper, or the card by a single pixel. Fill and stroke are
+     opaque theme tokens: the pill's footprint never shifts with content, and
+     the text inside is sized in code (SendFragment.fitQueueCounterPill) so
+     the complete "N files · X MB" string is ALWAYS visible — never
+     ellipsized, never truncated, at any supported screen width. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_pill" />
+    <solid android:color="@color/bg_secondary" />
+    <stroke
+        android:width="@dimen/stroke_hairline"
+        android:color="@color/border_subtle" />
+</shape>

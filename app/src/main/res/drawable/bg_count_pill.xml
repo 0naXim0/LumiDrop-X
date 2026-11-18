@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §5 (Reliability pass — media picker polish): the selection count pill in
+     the picker header — a quiet tinted container (accent at ~14% over the
+     card background) with fully-saturated accent text, so it reads as a
+     status, not a second CTA competing with the solid-accent Add button
+     beside it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="10dp" />
+    <solid android:color="#249172F6" />
+</shape>

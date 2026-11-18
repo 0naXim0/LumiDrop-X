@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18 V8: the floating transfer popup was one of the pieces
+     colors.xml flagged as "not yet rebuilt" — it still used flat
+     rectangular overlay_bar_collapsed/expanded colors straight on a plain
+     LinearLayout background, the only surface left in the app without the
+     rounded-card treatment everything else got. Used for both
+     floatBarCollapsed and floatBarExpanded (as two separate rounded
+     surfaces with a small gap between them when both show, rather than
+     one shape that has to change depending on expand state — simpler,
+     and just as clearly one popup). Uniform corner radius, same reasoning
+     as bg_card_elevated: GradientDrawable derives a correctly-rounded
+     shadow outline from a uniform corner radius automatically. -->
+<!-- GOAT v2: same subtle hairline as bg_nav_bar.xml — ties the two
+     floating surfaces together visually, and both were called out for
+     blending into the background too much without it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_xl"/>
+    <solid android:color="@color/bg_card_elevated"/>
+    <stroke android:width="@dimen/stroke_hairline" android:color="@color/border_hairline_light"/>
+</shape>

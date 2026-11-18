@@ -1,0 +1,1097 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.lumidrop.x'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.lumidrop.x"
+        minSdk 21
+        targetSdk 34
+        // LumiDrop X v1.0 — first release under the LumiDrop identity.
+        // Same battle-tested engine as the final WebShare X pass (production
+        // stability: Safari-10 web client compat, byte-level upload resume,
+        // native decline sync, universal WebUI profile), rebranded end-to-end.
+        // Wire protocol (discovery magic "whx1", ports, API endpoints)
+        // deliberately unchanged so old WebShare X peers keep interoping.
+        //
+        // Pass 5 added the full pass-4/5 feedback round; Pass 6 (vc41) added
+        // previewer-after-acceptance gating, the Connected Devices scroll-edge
+        // fade rework, the Quick Play LdxDialog picker, the media picker
+        // album-card redesign, the Send-tab micro-scroll clamp, centered
+        // Transfers tab pills, the iPad 4 incoming-list layout fix,
+        // cancel-propagation to every receiver, and the rebuilt Auto-Send
+        // Files engine. Pass 7 (vc42) remade Auto-Send as the plain mirror of
+        // Auto-Accept, rebuilt the server card's URL system, added the
+        // combined network toggle, honest Mobile Data ordering, the genuine
+        // refresh, the web-side brand sweep, the iPad 4 scrollbar and the
+        // decluttered (i)-based Settings screen.
+        // Pass 8 (vc43): duplicate-transfers root fix (Auto-Send
+        // no longer double-parks native "waiting" rows when a browser took
+        // the batch; parked batches now also drain to browsers; QS duplicate
+        // sweep), receiver-side Cancel-All now propagates whole-push cancels
+        // to senders and refuses resurrected file POSTs, an explicit
+        // Interrupted/Reconnect presentation for connection loss, resource
+        // bounds for large batches (session index release, group pruning),
+        // the Internet-sharing managed-relay tunnel architecture replacing
+        // raw mobile-data sharing (remote/ + tools/relay/ + TUNNEL.md) with
+        // real client-identity preservation, sharing toggles as genuine
+        // boundaries (subnet request gate, session invalidation, all-off
+        // server stop), full untruncated URLs in every modal, reliable
+        // Connected-Devices fades flush to the card edge, the redesigned
+        // bottom save bar on both settings screens, the decluttered WebUI
+        // settings (explanatory-only sections removed), the Received-tab
+        // folder-expansion scroll fix (dispatch-time intercept lock), and
+        // automatic Active/Received tab selection on screen entry.
+        //
+        // Pass-8 follow-up (vc44): Internet Sharing removed
+        // ENTIRELY (remote/ + tools/relay/ + TUNNEL.md deleted; the app is
+        // strictly LAN-based again, and the server card can never fall back
+        // to a mobile-data IP when no LAN is up); the auto-accept
+        // synchronization root fixes (announce-placeholder vacuous-truth
+        // status, "already fully delivered" strands both sides' rows,
+        // sender-cancel/TTL/dead-session cleanup of pre-registered rows);
+        // the auto-send no-device waiting queue fixed (drain handoff
+        // resolves parked rows by real outcome — never a silent vanish);
+        // WebUI Settings redesigned onto the app's card design language with
+        // (i) info affordances and a back affordance; the shared SaveDock
+        // save/cancel control (visually distinct elevated surface, gradient
+        // primary action) on both settings screens; the minimized
+        // incoming-files badge redesigned (purpose-built incoming-tray
+        // glyph, lit orb, white count pill); the Transfers Active/Received/
+        // Sent subtabs received the Connected-Devices scroll-edge fade
+        // treatment; "Open Folder" renamed to "Open Received Folder"; and
+        // the Quick Share Folder tile icon replaced with the canonical
+        // folder silhouette.
+        //
+        // Pass-10 (vc44, this build — version deliberately unchanged per the
+        // release contract; only the APK/zip naming carries the pass number):
+        // the automatic-resume overhaul (native sender auto-resume loop with
+        // checkpoint probe + bounded backoff + 10-minute window and honest
+        // Reconnecting… presentation; interrupted receive rows re-opened
+        // under their ORIGINAL id on the resumed leg — no duplicates; the
+        // manual Reconnect buttons removed from both UIs; receiver-side
+        // dead-sender window widened to match the sender's resume window);
+        // the strictly-ordered download gate (admission by the displayed
+        // queue order — PENDING startedAt — instead of HTTP arrival order);
+        // the single-text-modal fix (a manual accept in the Incoming Files
+        // sheet no longer pops a second text dialog); announce-placeholder
+        // self-healing (withdraw on manifest failure + the UI-tick sweep +
+        // notification/modal agreement restored); the Incoming Files sheet
+        // height-cap root fix (re-derived every tick and on folder expand —
+        // no more fill-the-screen sheet at ~10 items); real-time Connected
+        // Devices cleanup on LAN loss (native-peer map + browser sessions
+        // cleared the moment the local network vanishes or changes); the
+        // browser transfer previewer auto-dismiss (Clear Finished removed;
+        // a settled batch stays readable a few seconds then sweeps itself);
+        // browser-side automatic reconnect for interrupted uploads and
+        // receives; and pending browser transfers persisting across a page
+        // refresh (sessionStorage-backed restore with re-select-file
+        // recovery under the same request id).
+        // Pass-12 (vc45, this build — version deliberately unchanged per the
+        // release contract; only the APK/zip naming carries the pass number):
+        // the cancel-finality root fix (a sender-side cancel of an IN-FLIGHT
+        // upload now cancels the host's streaming row through the engine —
+        // requestCancel tombstones it, the row resolves CANCELLED, the staging
+        // partial and resumable record are hard-deleted, and the web client
+        // always POSTs request-cancel so a deliberate cancel never reads as
+        // "Interrupted" on either side, with no temp resume files left
+        // behind); the wording sweep ("Waiting for reconnection" replaces
+        // every Interrupted/Resuming-automatically presentation — a passive,
+        // professional, non-manual label — and the web rows match); the web
+        // approval gate fix (/api/connstate is exempt from the password gate
+        // so a pending client's poll learns the host's Accept and reloads on
+        // its own — the reported "confirmation screen only disappears after a
+        // refresh" root cause, plus cache-busted polls); the Full Screen
+        // toggle re-scoped to hide ONLY the navigation buttons (status bar
+        // stays visible) and renamed "Hide Navigation Bar"; the Send-tab
+        // compact server card (Moon joins Copy/QR/Hotspot in the pill; the
+        // Running label is gone; dot + [LAN] chip + full URL share one line;
+        // the dead row removed); the App Picker redesign (header + iconified
+        // search + count caption + selected-state rings + restyled actions)
+        // with robust token-based search that also matches the package name
+        // ("Lumi " with a trailing space now finds LumiDrop X) while keeping
+        // every performance optimization; the Send To modal redesign (typed
+        // device rows: monitor/phone chips, name + address, Browser/This-app
+        // tags); the History subtab's circular-arrow icon; per-tab honest
+        // empty-state wording; the dedicated APK file glyph on both the native
+        // and web sides; the line-based Quick Share Folder tile icon; the
+        // shared minimalist LdxScrollbar (appears the instant a drag/fling
+        // begins) on the Transfers subtabs, the sending queue and Connected
+        // Devices; the sending queue's scroll-edge fade treatment; the
+        // Connected Devices gradient fix for Android 5 tablets (weight-fill
+        // replaces the captured-height latch — the Transfers-subtab mechanism
+        // the person confirmed works on that device); the redesigned minimized
+        // incoming badge (dark-gray disc, dark-purple ring, no glow) raised
+        // above the nav bar's elevation so it can never sink behind it; and
+        // the Android 5 open-received-folder rung (plain file:// URI ladder
+        // for API < 24 file managers).
+        //
+        // Pass-13 (vc46): the App Picker redesign (header-integrated counters,
+        // no Cancel button, search+Share floating bottom bar, Enter closes the
+        // keyboard); the web transfer previewer's expand/collapse fix (idle-gate
+        // bypass) and per-item ~0.7s terminal auto-dismissal with instant hide;
+        // the Send To modal's fixed dimensions and live device list; per-file
+        // native-push cancellation (the X cancels exactly its own transfer);
+        // durable download-cancel tombstones (Active-tab ghost files); the
+        // tethering-anchored [Hotspot]/[Wi-Fi] URL tag classification; the
+        // Connected Devices card pinned to its empty-state height (growth
+        // regression) while keeping the pass-12 fade fix; native-to-native
+        // connections exempt from the connection-confirmation and password
+        // gates; and the history icon's arrow rotated 18° anticlockwise clear
+        // of the clock hands.
+        // Pass-17 (vc50): see CHANGELOG-pass17.md — the pass-16 fix round's 14
+        // issues (duplicate browser→host records, complete immediate cancel
+        // semantics both directions, cancel-then-resend without restart,
+        // app→browser resumption, instant Waiting-for-Reconnection detection
+        // via the nonce liveness challenge, duplicate reconnection cards,
+        // durable instant History via HistoryStore, no Retry flash on
+        // cancelled QS rows, iPad 4 media/click lag, iOS 10 outside-tap).
+        //
+        // Pass-18 (vc51): resume-one-while-all-paused on BOTH sides (gate
+        // preemption + priority admission + parked-send relaunch through the
+        // surviving native control link, per-row AND per-folder), sender-side
+        // "Auto-Resume on Reconnection" for BOTH send paths (native app→app
+        // via sendLivenessProber's one-shot /api/ping; app→browser via the
+        // browser-liveness probe + the DOWNLOAD chip re-wording), app→browser
+        // auto-resume after reconnection end-to-end (reconnecting-latched
+        // rows skip the deliberate-cancel verdict; onPageReconnected resolves
+        // latched rows the instant the page's SSE re-attaches; QS in-flight
+        // cache lives as long as its resumable rows), Open Received Folder
+        // opening Android's BUILT-IN Files app on Android 5 (package-launcher
+        // rung 4d + the never-auto-launch-lone-third-party-manager guard),
+        // the nav-bar under-gradient genuinely bottom-anchored (linear
+        // gradients ignore centerY — pass-17's ramp spanned the full band;
+        // real stop positions now keep the top half invisible), and the
+        // session-scoped blocked-clients sheet (minimalist no-entry icon
+        // left of Refresh, per-device Unblock, restart still clears all).
+        //
+        // Pass-19 (vc52): see CHANGELOG-pass19.md — the REAL pause-yield
+        // (awaitUnpaused's unbounded block had made the pass-16 yield branch
+        // dead code: a paused in-flight send held its dispatch permit forever,
+        // so pausing never promoted the queue and only the in-progress item
+        // could ever resume); scheduled pause-permit yield on BOTH host gates
+        // (pausing the in-progress item now immediately starts the next
+        // Waiting one, app-to-app and app-to-browser); full per-item
+        // pause/resume state sync across devices (waiting rows propagate
+        // through the control protocol both directions, Pause All reads
+        // Paused on BOTH devices, the receiver's pause is mirrored onto the
+        // sender via the file-status probe); the sender flips to "Auto-Resume
+        // on Reconnection" within ~5-10s of a drop (SEND rows probe at a 5s
+        // stall) and a wedged-but-peer-alive data socket self-heals via an
+        // immediate fresh-socket resume; large batches never stop partway
+        // (the 5-minute stale sweep now measures the PEER's last download
+        // activity instead of row creation — the deterministic ~100-file
+        // cutoff — and the download-waiter deadline is a sliding window
+        // refreshed while the gate streams, so a 2GB file no longer fails
+        // every queued sibling after 60s); the web client's dropped-dispatch
+        // auto-retry actually fires (the dispatched-flag release ran BEFORE
+        // the retry's own guard — dead code since pass-5) and retries up to 3
+        // times; bidirectional mouse-wheel scrolling for the Videos/Albums,
+        // Images/Folders, and Incoming Files strips; the Media Picker's
+        // selection overlay clipped to the card with matching rounded corners
+        // (both grids), selection changes rebind via payload (no thumbnail
+        // blanking — the Albums tab never flickers on select/deselect, stable
+        // IDs throughout); the nav under-gradient rebuilt as a code-built
+        // 8-stop smooth ease-in ramp (XML's three pinned stops could only
+        // produce a full-band wash or a hard midpoint line — the reported
+        // "still starts at the top / glitchy"); and symmetric device
+        // discovery via rate-limited unicast beacon echoes + unicast
+        // goodbyes for networks that deliver broadcast frames one way only.
+        // Pass-26 (vc56): final UI polish, previewer improvements, App
+        // Picker fixes, and navigation experience — the Queued Files counter
+        // pill (complete count + size in a compact pill that never
+        // ellipsizes, sized by measure-backed text stepping inside a
+        // weighted slot); the previewer's zoom made genuinely reliable (the
+        // image now owns its gesture stream — the old listener declined the
+        // DOWN at fit scale, so the pager took the gesture and pinch /
+        // double-tap never reliably engaged; exclusivity is now negotiated
+        // explicitly, near-fit pinches settle to 1× smoothly, and a
+        // discoverable "1×" reset control appears while zoomed);
+        // deterministic first-tap filmstrip navigation
+        // (scrollToPositionWithOffset — the minimal scrollToPosition could
+        // leave the snap helper settling back on the old page); nav arrows
+        // hidden for single-item previews and re-aligned to the video
+        // control row's own line on video pages; select/deselect directly in
+        // the preview (ring ↔ accent-check, wired to the REAL selection with
+        // the picker grids payload-synced); the App Picker's duplicate-open
+        // guard (one live sheet, ever) and hold-and-slide multi-selection
+        // (the Media Picker's shared attachDragSelect); the server card's
+        // Start/Stop button now state-accurate while running and waiting for
+        // a network (red stop, not the stale green start); Settings'
+        // "Automatic Server Startup" toggle (on by default, launch-time
+        // only, never touches a running server); the Connected Devices card
+        // re-latching its pinned height the moment the viewport changes
+        // (hide/show navigation buttons, rotation, keyboard — no more stale
+        // buttons-visible height); the folder box's redundant bottom-center
+        // Collapse pill removed (the header chevron is the one control);
+        // smooth shared-axis-Y crossfade tab transitions riding the same
+        // show()/hide() shell (150ms, matching the nav indicator — state
+        // preservation untouched); and the Android system navigation bar
+        // kept on the app's own bg_deep surface in EVERY sheet, modal and
+        // sub-settings (per-dialog window colors + the theme-level source
+        // of truth — no more black bar when a modal opens).
+        // ── Pass-28 (#6): publication version reset — 1.0.3 → 1.0.0 ─────────────
+        // The upcoming store release is the app's first public 1.0.0. This is
+        // the one place the version string lives: the Settings screen's About
+        // block reads versionName dynamically from PackageInfo at runtime, so
+        // the in-app display follows this change automatically and no second
+        // copy of the value exists anywhere to drift. versionCode, applicationId,
+        // signing and every other build setting are deliberately untouched.
+        // ── GOAT-PASS 1: maximum transfer performance & ultra-reliable ──────────
+        // real-time synchronization. Bounded parallel transfers (receiving and
+        // download gates 1 → 3, advertised to native senders and web clients
+        // alike), vendored + I/O-tuned NanoHTTPD (64KB request-body buffering,
+        // 64KB multipart copy, 128KB response copy), 1MB SO_SNDBUF/SO_RCVBUF
+        // on accepted sockets, SSE "retry: 1000" fast reconnection, and the
+        // web client's upload/download pumps pacing to the host's advertised
+        // capacity. Full engineering report: GOAT-PASS-1.md at the repo root.
+        // GOAT-PASS 2 (versionCode 58): the bounded transfer pipeline
+        // (PipelineIO) + concurrency returned to exactly 1. versionName
+        // stays 1.0.0 — the block reads it dynamically from PackageInfo at
+        // runtime, so no second copy of the value exists anywhere to drift.
+        // ── GOAT-PASS 3 (versionCode 59): reliability, performance and ─────────
+        // bug-fixing update — the slot-reacquire contract (paused transfers
+        // re-acquire their execution slot on resume, restoring strict
+        // one-active-per-direction under every pause/resume scenario), the
+        // reconnect identity fixes (resume-pending signal for browser
+        // uploads, pause-aware legacy Safari receive pump), instant sheet
+        // openings (process-level listing cache + start-up prewarm),
+        // current-directory Files search with keyboard-Enter finalization,
+        // the windowed-renderer node pool (iPad 4 scroll stability), the
+        // floating Clear Failed pill, and the responsive grid-column fix.
+        // Full engineering report: GOAT-PASS-3.md at the repo root.
+        // ── GOAT-PASS 4 (versionCode 60): the send-abort watchdog (the ────────
+        // blocked-write deadlock behind the two-pause queue freeze), the
+        // slot-recycling windowed renderer (iPad 4 scroll stability), the
+        // restored whole-storage Files search (native + web, prewarmed
+        // index), the unified "Auto-Resume on Reconnection" wording on both
+        // sides, the redesigned navigation menu, and the additional audit
+        // fixes (sidebar boot, controller reaping, first-visit tab loads).
+        // ── GOAT-PASS 5 (versionCode 61): reliability & polish update — the ──
+        // fifth-pause/cancel queue freeze root-fixed on BOTH legs (a settled
+        // host pause now ENDS the browser upload's HTTP leg with a durable
+        // checkpoint + "Paused by host", Connection: close on every
+        // terminal early-exit so no zombie connection can exhaust the
+        // browser's per-host pool), the reconnect restart-from-zero
+        // regression fixed (a network read failure lands the durable
+        // checkpoint instead of deleting the partial), the authoritative
+        // isExecuting signal (only the genuinely executing transfer shows
+        // the purple active state), first-attempt search correctness (8×
+        // index caps + Android-forest deferral + event-driven
+        // invalidation), the flicker-free search state machine, the
+        // coordinated redesign of the Files/Music/Received/History menus,
+        // Remember Last Opened Directory (default on), and the 8-column
+        // laptop Images grid. Full engineering report: GOAT-PASS-5.md at
+        // the repo root.
+        // ── GOAT-PASS 5 final round (still versionCode 61): reconnection ──
+        // now RESPECTS the queue on the browser side too (the resolved
+        // auto-reconnect, manual Retry and re-select all re-enter through
+        // the one-at-a-time pump instead of opening a second XHR beside
+        // the row the pump already promoted — the pump's active count now
+        // requires a genuinely in-flight XHR), the parked upload's pause-
+        // lift resume answers its preserved checkpoint (the FAILED-only
+        // row check previously refused the parked ACTIVE row and threw
+        // away every paused byte), a demoted park (paused before its first
+        // durable byte) gets the honest refusal that restarts it under the
+        // same request id instead of an infinite pending retry loop, park
+        // checkpoints live as long as their row (24h backstop + row-aware
+        // sweep) so a long pause never destroys progress, a fresh re-POST
+        // adopts the live parked row instead of minting a duplicate, the
+        // rare swept-PENDING fallback re-keys its receiving-slot
+        // registration so isExecuting stays truthful, the WEB Files tab
+        // honors the same Remember-Last-Directory preference (served via
+        // webui-config; validated restore with root fallback), the web
+        // search index is prewarmed at server start, and an upload paused
+        // before its first byte reads "Paused by Host" on the browser side
+        // as well.
+        // ── GOAT-PASS 6 (versionCode 62): the complete transfer-lifecycle ──
+        // reliability pass. Native-to-native Pause All no longer cancels
+        // the remaining queue when the first resumed item completes (the
+        // session-hold rule now counts paused-WAITING siblings, not just
+        // mid-stream parks — NativeSessionPolicy; a finished-looking
+        // session never cancels a file the scheduler still dispatches), a
+        // deliberately paused native session keeps its receiver-side push
+        // record alive with a slow keep-alive poll (a >10-minute pause no
+        // longer destroys every sibling's resume checkpoint), app-to-browser
+        // mixed pause/resume can no longer corrupt paused rows (a
+        // pause-parked connection that dies is treated as the pause's own
+        // fallout — never a cancel verdict, never a stuck Auto-Resume; the
+        // download endpoints answer a paused item's DM retry with "Paused
+        // by host" + Connection: close; the browser pump re-dispatches a
+        // paused item whose parked connection died once the pause lifts),
+        // the native receive claim chain keeps its receiving-slot ledger
+        // exact (re-key on the fresh-row fallback, gated acquisition on the
+        // nothing-to-wait-on path — a genuinely receiving row can never
+        // render "Waiting" while streaming, and the fallback can never run
+        // unslotted beside the gate), and the partial-file recovery cards
+        // track their partial in real time (a deleted or moved partial
+        // removes its card within seconds — no restart needed — and the
+        // recovery chip shows its saved progress percentage). Full
+        // engineering report: GOAT-PASS-6.md at the repo root.
+        // ── GOAT-PASS 7 Part 1 (versionCode 63): transfer engine, resume ──────
+        // reliability, performance & selection systems. (§2A) Queue
+        // transitions are event-driven on both sides — the app UI renders the
+        // moment the engine mutates (coalesced nudge, the periodic tick stays
+        // as the backstop) and a browser-side swallowed <a download> dispatch
+        // frees the batch in ~8s instead of the 25s never-requested stall
+        // (the pump reads the new per-row "requested" signal to tell a
+        // swallowed dispatch from a legitimately gate-parked request).
+        // (§2B) Transfers report honest speed from the first byte: every
+        // claim/re-open arms a clean sample baseline so the first computed
+        // rate measures a PURE streaming window — the fabricated "KB/s" start
+        // (the first burst divided by the row's whole PENDING lifetime) and
+        // its 2.5–3.5s cosmetic ramp are gone; rising rates converge at the
+        // fast alpha, falling ones stay smoothed. (§2C) Reconnection resume:
+        // a download connection dying around a page re-attach can no longer
+        // be misconvicted CANCELLED by the liveness challenge (the re-attach
+        // stamps an immunity window; verdicts inside it resolve resumable),
+        // a with-bytes abort on a live page resolves INTERRUPTED first and
+        // only convicts after the re-request evidence window lapses — so the
+        // download manager's own Range retry re-opens the SAME row from the
+        // real byte offset instead of being refused into a duplicate from-0
+        // download; the browser pump never re-fires a fresh download for an
+        // interrupted-with-bytes item; and a native push record with live
+        // staging partials survives sender silence 3× longer so a late
+        // reconnect resumes instead of restarting. (§3) The Received and
+        // History tabs get the Files sheet's full selection system — range
+        // selection (long-press anchors, inclusive additive spans),
+        // hold-and-slide, and edge auto-scroll — through the ONE shared
+        // attachDragSelect; the endpoint-deselection bug (the final item
+        // staying selected when the finger releases in a row gap) is fixed
+        // gap-tolerantly at the shared layer for every surface; the Received
+        // header is redesigned (item counter left / Open Received Folder
+        // middle / sort right — the Delete Received Files pill retired in
+        // favor of the selection system); and the Media/App picker grids gain
+        // row-by-row range selection + hold-and-slide in adapter (visual)
+        // order. Full engineering report: GOAT-PASS-7.md at the repo root.
+        // ── GOAT-PASS 7 Part 2 (versionCode 64): files, music, media picker, ──
+        // menus, search & final integration — the complete GOAT-PASS 7 release
+        // on top of Part 1's tree. (§1) SD-card files open exactly like
+        // internal-storage files: the FileProvider now maps the /storage mount
+        // tree (root-path entry), so a removable-volume file addresses as a
+        // proper content:// Uri instead of failing with "This file can't be
+        // opened here" — no permission change, no SAF workaround, internal
+        // paths keep their narrower mapping. (§2) The Files sheet's search:
+        // the locate control (a dedicated minimal target glyph — the chevron
+        // stays the folder-open affordance) closes the keyboard immediately,
+        // navigates to the hit's parent, scrolls the EXACT item into a
+        // comfortable viewport position and highlights it clearly (files AND
+        // folders); search-result bodies perform their normal actions (open /
+        // open folder) instead of toggling selection, and a folder's ">"
+        // appears only while that folder is selected — in the Music sheet
+        // too. (§3/§6) The shared anchored menu is redesigned compact (36dp
+        // rows, 13sp labels, honest width clamp, height capped to the space
+        // that exists below the trigger — never clipped, scrolls inside) and
+        // every menu now opens anchored to its own trigger: the History and
+        // Received sort menus hang off their right-side icons (end-aligned)
+        // instead of the screen's left edge. (§4) Music albums load
+        // independently of playback (the DURATION>0 metadata-luck filter is
+        // gone — only an honest SIZE>0 guard remains), and Music search
+        // returns the matching SONGS themselves (whole-library track rows
+        // first, then name-matching folders) instead of only their parent
+        // folder. (§5) The Music sheet's sort glyph is replaced by the ⋮ menu
+        // (same design language as Files) with Delete / Rename / Copy / Cut /
+        // Paste on the shared FileOps engine — collision-safe, MediaStore-
+        // rescanned, and the All-Tracks view can never be a paste destination
+        // (refused inside the operation, not by hiding the entry). (§7) The
+        // music pill opens the player on the first click: a sheet backdrop
+        // tap landing on the pill's strip is forwarded to the player instead
+        // of silently dismissing the sheet, and a failed window attach
+        // re-binds the overlay to the live activity instead of losing the
+        // player; the overlay's album artwork is clipped by the view itself
+        // at a fixed radius (no more scale-shrunk near-sharp corners).
+        // (§8) The Media Picker's Albums search bar is translucent — the
+        // album grid stays visible beneath it. (§9) The text-sending modal
+        // is themed on the app's real AppCompat base so the field's NATIVE
+        // Android text editing (long-press selection handles, Select all /
+        // Copy / Cut / Paste) works like every properly-implemented editor.
+        // Full engineering report: GOAT-PASS-7.md at the repo root.
+        // ── GOAT-PASS 8 (versionCode 65): complete transfer reliability ────────
+        // refinement, selection system improvements, Files performance,
+        // clipboard workflow & UI polish. (§1) The Received tab's toolbar
+        // (item counter / Open Received Folder / sort icon) always builds on
+        // the very first refresh — the header mode flag is nullable-null
+        // ("never built") and reset on every view creation, and the live
+        // count patches on every completed scan. (§2) The Received/History
+        // selection bar is ONE compact pill — Cancel · Delete · Select All —
+        // with eligible-only Select All (the same deletability gate every
+        // selection entry uses) and a full-toggle second tap. (§3) Range
+        // anchors are validated against the LIVE selection state on every
+        // surface (Files, Music, Received, History, Media/App grids): an
+        // anchor that is no longer selected reads as no anchor, so a stale
+        // key from a previous selection session (left behind by drag REMOVE
+        // passes or covering exclusions) can never conjure a surprise range.
+        // (§4) A SELECTION STYLE setting (Range Selection default / Hold &
+        // Slide) applies globally to every surface, read live at gesture
+        // time — the two interaction systems never run simultaneously.
+        // (§5) The Files sheet's ⋮ menu gains New Folder (validated name,
+        // collision and storage-refusal handling, current-directory only,
+        // immediate listing + parent count refresh). (§6) The text-sending
+        // modal's field is a real AppCompatEditText with no scrollable
+        // ancestor and an actionMode-overlay theme — the platform's own
+        // selection handles, insertion menu and Select all / Copy / Cut /
+        // Paste toolbar. (§7) The Files sheet shows a floating Paste/Cancel
+        // bar exactly while a Copy/Cut clipboard is armed. (§8) Transfer
+        // status text moves into the card's lower information row — left of
+        // the speed caption and the Pause/Cancel buttons, immediately left
+        // of the ✕ on recovery cards — leaving the title its full width.
+        // (§9) Huge Files directories: the visible order is computed once
+        // per genuine input change (decorated sort keys, no per-comparison
+        // allocations) and selection toggles re-bind only the rows whose
+        // state actually changed — no re-sort, no full diff per toggle.
+        // (§10) Folder counts refresh after every file operation: each
+        // changed directory's PARENT cache entry dies with it (the count
+        // row lives there), path-segment-safe invalidation, and the Music
+        // sheet / Received tab invalidate the Files cache for the
+        // directories their operations change. (§11) Native-to-native
+        // reconnection: the sender's wedged write is aborted onto the
+        // retry loop once the row is latched reconnecting and its bytes
+        // stay silent (Cause.NETWORK — no more waiting out TCP's
+        // minute-scale retransmission backoff after Wi-Fi returns), and
+        // the receiver probes the sender's own server at 7s of silence
+        // (latching the calm Auto-Resume presentation and freeing its
+        // receiving slot instead of a flat 15s failure). (§12) The ⋮ menus
+        // scroll INSIDE the fixed card — the card, its radius and its
+        // title stay anchored and fully visible. (§13) Resume cannot
+        // re-pause itself: the resumed leg posts its resume control to the
+        // receiver SYNCHRONOUSLY before its checkpoint probe, closing the
+        // probe-vs-control race that mirrored a just-lifted pause back
+        // onto the row. (§14) A press inside an expanded Received folder's
+        // content area can never resolve to the parent folder row — the
+        // shared gesture's hit-test walks the expanded box as an exclusion
+        // region.
+        versionCode 89
+        versionName "1.0.0"
+        // ── GOAT-PASS 17 (versionCode 89 — incoming-transfer acceptance ──
+        // reliability): the intermittent "Accept does nothing" is fixed at
+        // its identity root — the announce placeholder used to key its item
+        // names through sanitize() while the manifest keys decisions by the
+        // RAW path, so a placeholder-phase Accept on any file whose name
+        // contains a path-reserved character, a leading dot, a >255-char
+        // name or a same-selection _1 twin was silently DROPPED at manifest
+        // application (the receiver's row never became a transfer; the
+        // sender sat "Waiting" to its 30-minute cap). Placeholders now keep
+        // the raw names, manifest application heals any key drift through
+        // sanitize-equivalence (old-sender placeholders included), and a
+        // decision that matches nothing is traced instead of vanishing.
+        // Every accept/decline endpoint is now result-traced at EVERY
+        // outcome (AcceptTrace: bounded 256-slot ring, correlation ids +
+        // stage + outcome, no contents/tokens/addresses), acceptUpload is
+        // idempotent on repeat taps (an accepted verdict is final — no
+        // double registration), and the browser-upload TTL sweep keys an
+        // ACCEPTED request off its DECISION clock (refreshed by the queued
+        // client's status polls) instead of the birth clock, so an
+        // accepted-but-queued upload can no longer be swept before its POST
+        // turn. The sheet's per-item taps verify their own effect and say
+        // so when a tap changed nothing (one-shot toast) — an ineffective
+        // tap is never silent again.
+        // ── GOAT-PASS 16 (versionCode 88 — installation permission ──
+        // flow, instant installer presentation, Files sheet performance &
+        // production readiness): the permission screen now genuinely OPENS
+        // (the pre-flight used to call startActivity from the application
+        // context without NEW_TASK — an exception the catch swallowed, so
+        // the toast showed and nothing else happened; the launcher is now
+        // context-shape-aware with an honest fallback chain), returning
+        // from Settings resumes the blocked install exactly once (single
+        // pending op, newest-wins, consume-once — no loops, no duplicates,
+        // real permission state rechecked, never assumed), and BOTH
+        // permission gates (pre-flight and mid-install) register the same
+        // resume. The install modal now appears IMMEDIATELY: a skeleton
+        // (file name + placeholder + honest "Inspecting package…", Install
+        // disabled) paints before any archive I/O, inspection runs on IO
+        // behind an op-id staleness guard, and the SAME dialog fills in
+        // place — with a bounded path|mtime|size LRU so a second tap or a
+        // Files-row tap of the same archive never re-scans (a replaced
+        // archive misses by construction). Thumbnail extraction for
+        // XAPK rows reads the declared icon.png FIRST as a stream and only
+        // temp-copies a base APK when none is declared AND it is ≤64 MB
+        // (the old ≤500 MB copy-per-row was the storage-bandwidth flood
+        // behind the intermittent ~1.5 s Files-sheet freezes). The two
+        // main-thread stalls that flood exposed are off the hot path
+        // (serve-time stat memoized 2 s; volume probe throttled 5 s), and
+        // a rapid double-tap can no longer stack two install dialogs
+        // (one-live-dialog gate).
+        // ── GOAT-PASS 15 (versionCode 87 — unified installation across ──
+        // Received & Files, modal UX refinement, installation lifecycle
+        // cleanup & search reliability): the Files sheet's file-body tap
+        // (openStandaloneFile — the surface GP14's routing missed, which is
+        // why Android's "Open with" chooser still appeared there) now routes
+        // .xapk/.apkm/.apks through the SAME XapkInstallFlow the Received
+        // tab uses, while ordinary .apk keeps the system installer; the
+        // install modal gains the app-wide LdxDialog window recipe (0.55 dim
+        // scrim, system-bar chrome, full-screen backdrop with outside-tap
+        // dismissal that is safely disabled once an install operation owns
+        // the modal); user cancellation now dismisses quietly (no redundant
+        // "Installation Cancelled" popup) while genuine failures, rejections
+        // and incomplete expansion data keep their explanations; minimum-OS
+        // lines display real Android version names (API 23 → "Android 6.0+")
+        // with an honest API-N fallback; and the Files sheet's whole-storage
+        // search can no longer answer a session's FIRST query from a
+        // fresh-but-OLD prewarmed index (the reported intermittent
+        // ".xapk found only on the second search" — the first query now
+        // forces an index built after the sheet opened; received-file
+        // invalidation was already wired through LibrarySync).
+        // ── GOAT-PASS 14 (versionCode 86 — Carnage Wars XAPK installation ──
+        // root-cause fix, reliable APK component resolution & unified
+        // installation system): the Pass-13 AXML reader is taught the
+        // real-world APK form — an inner .apk is a NESTED ZIP whose
+        // AndroidManifest.xml lives INSIDE (the old code parsed the PK-zip
+        // byte stream as bare AXML, which always read null, and an 8 MB
+        // entry-level precheck rejected every 51–413 MB real component
+        // outright — the exact "no parseable package manifest" failure the
+        // Carnage Wars modal showed). The reader now sniffs the magic bytes,
+        // streams the nested zip's manifest out with bounded reads (never
+        // materializing the APK; a 413 MB Unity asset pack yields its 2 KB
+        // manifest after a few KB), and keeps the bare-AXML path; base
+        // identification gains a documented container-manifest EXCLUSION
+        // fallback (the one APK not declared a split) with an honest
+        // ambiguity verdict when evidence is insufficient; and Received and
+        // the Files sheet now share ONE installation system — XapkInstallFlow
+        // — with the same inspection, resolver, validation, icon pipeline,
+        // PackageInstaller session and result handling, while ordinary .apk
+        // files keep Android's own installer flow in both surfaces.
+        // ── GOAT-PASS 13 (versionCode 85 — universal XAPK format ──
+        // compatibility, intelligent APK role detection, reliable icon
+        // extraction & installation pipeline hardening): base/split roles,
+        // package identity and versions now come from each inner APK's OWN
+        // binary AndroidManifest (a pure-JVM AXML reader verified against
+        // real aapt2 output) and a lenient multi-shape container-manifest
+        // interpreter — filenames are supporting evidence only, so a
+        // package-named main APK (the Carnage Wars layout, no literal
+        // "base.apk") is correctly identified and installed, asset-pack
+        // components are classified by their own metadata, mixed-package
+        // and version-conflicting components are excluded with honest
+        // errors, and the GP10 filename heuristics remain as the fallback
+        // for unparseable manifests; the icon pipeline resolves the real
+        // app icon from the metadata-identified base APK first (bounded
+        // decode, the archive's declared/root icon.png second) with the
+        // GP12 unreachable-fallback bug fixed; the install modal shows
+        // accurate component lines (no more "1 base + N splits" beside a
+        // missing-base warning) plus the real icon; and an internal
+        // diagnostic ring buffer traces every inspection and installation
+        // stage for future compatibility forensics.
+        // ── GOAT-PASS 12 (versionCode 84 — XAPK first-install reliability, ──
+        // OBB integrity, accurate installation results, Files-sheet icon
+        // recovery & complete ZIP-extraction removal): OBB expansion data is
+        // now STAGED into the app's own cache and SIZE-VERIFIED BEFORE the
+        // install session commits, then atomically moved into the real obb
+        // home and verified AGAIN after Android confirms (wrong-sized
+        // residue from an earlier attempt is replaced, never accepted — the
+        // first-install/reinstall inconsistency is closed); installation
+        // results are per-operation-idempotent (one finalization, no
+        // duplicate/contradictory popups), ambiguous OEM ABORTED results are
+        // cross-checked against the system package list, and the truthful
+        // success popup (app name + OBB status + Open) appears only after
+        // the complete required work; the Files sheet renders XAPK through
+        // the SAME 40dp cache key as Received/History (one shared
+        // recognition/thumbnail pipeline, independent of transfer events)
+        // with case-insensitive manifest base matching and the XAPK-spec
+        // icon.png as a secondary real-icon source; and the in-app ZIP
+        // extraction feature is COMPLETELY REMOVED (engine, menu actions,
+        // state and callbacks) while ordinary ZIP transfer/streaming/icons/
+        // external-opening remain untouched.
+        // ── GOAT-PASS 11 (versionCode 83 — installation architecture ──
+        // correction, real XAPK icons, ZIP extraction recovery, installer
+        // modal & reliability): ordinary .apk RESTORES the original
+        // system-installer flow verbatim (ACTION_VIEW + FileProvider, tap →
+        // Android's own installer, no custom modal); the built-in
+        // PackageInspector/PackageInstaller engine serves .xapk/.apkm/.apks
+        // ONLY; ZIP package archives show their REAL embedded app icon
+        // (base APK streamed to a bounded cache file, then the same platform
+        // parser + PNG thumbnail cache ordinary APKs use); the archive
+        // install modal is rebuilt on the app's own LdxDialog scaffold
+        // (symmetric padding, min(available,420dp) card, Gravity.CENTER —
+        // fixing the left-shift); and the ZIP-extraction lifecycle is
+        // corrected (progress marshalled + sheetAlive-guarded, cancellation
+        // rethrown not swallowed, sheet dismissal cancels deterministically,
+        // usableSpace=0 mounts tolerated, specific unsupported-compression
+        // and encrypted-archive error messages) — fixing the Files-sheet
+        // interaction breakage and crashes after extraction.
+        // ── GOAT-PASS 10 (versionCode 82 — XAPK/APKM/APKS support, native ──
+        // package installation, ZIP extraction, landscape stability,
+        // transfer reliability & background continuity): a structural
+        // PackageInspector (ZIP-content classification, never extension-only)
+        // feeds a PackageInstaller-session engine (base + every split in ONE
+        // committed session, authorization pre-checked, abandoned-session
+        // cleanup, honest result categories); the container family
+        // (.xapk/.apkm/.apks) gets its own stacked-blocks file icon and the
+        // unified install flow; the Files sheet gains Extract Here / Extract
+        // as Folder for ZIP selections (ZipExtractor: Zip-Slip-proof,
+        // collision auto-rename, bomb caps, cancellation with cleanup);
+        // and a partial WakeLock held ONLY while transfers are in flight
+        // (WakeGuard, ref-counted per transfer) keeps CPU throttling from
+        // stalling a transfer while the app sits minimized in recents.
+        // ── FINAL PASS 9 (versionCode 81 — landscape crash fix, persistent ──
+        // APK icon rendering, History metadata refinement & incoming-transfer
+        // acceptance reliability): the thumbnail DISK cache now writes APK
+        // icons as PNG (it wrote every entry as JPEG — a format with no
+        // alpha channel, which baked the icons' transparent pixels to black
+        // exactly on the restart-decode path, the reported "correct while
+        // open, black corners after restart"; stale JPEG twins are purged);
+        // History's device names drop the "Received from"/"Sent to" prefixes
+        // and carry the direction as COLOR (the exact accent/orange badge
+        // tokens) on an auto-fitting line (11sp→9sp floor before any
+        // ellipsis); the Accept/Decline taps in the incoming sheet no longer
+        // vanish silently during a server-restart window (serverOrToast —
+        // a live server or a loud retry prompt, never a swallowed click);
+        // the sender's decision wait no longer unilaterally expires a
+        // REACHABLE-but-undecided host after 2 minutes (the intermittent
+        // "Accept did nothing, sender stuck Waiting": the sender had already
+        // stopped polling when the accept landed; only genuine unreachability
+        // expires relatively now, the 30-minute absolute ceiling is
+        // unchanged); and the Transfers screen survives rotation via
+        // null-safe contexts in every bind path, an IO-context thumbnail
+        // load, and an explicit onConfigurationChanged re-render.
+        // ── FINAL PASS 8 (versionCode 80 — metadata visibility recovery, ──
+        // cross-version native text selection, APK thumbnail rendering &
+        // tab-switching performance): the invisible-metadata mystery finally
+        // closed at its REAL root — the metadata TextView carried
+        // LayoutParams(0, WRAP, 1f) inside a VERTICAL column since FP4's
+        // shell, measuring exactly ZERO pixels wide in every tab (FP7's
+        // contrast fix treated a real but secondary issue; a 0px view is
+        // invisible in any color); the Text Sender window converges the
+        // rest of the way onto the rename dialogs' verified-working recipe
+        // (applyLdxWindowChrome only — the explicit showNavigationBar call,
+        // the GP10 immersive-interference hazard, is GONE; the pinned-height
+        // + insets-listener geometry machinery is retired for a plain
+        // WRAP_CONTENT card; alpha/scale entrance and exit replace the
+        // translation slide); APK thumbnails lose their black corners and
+        // stretch (rounded backing restored on every bind instead of
+        // background=null, aspect-preserving drawableToBitmap bounds instead
+        // of setBounds(0,0,sz,sz), FIT_CENTER for the APK category in both
+        // the transfer rows and the Files sheet); and the tab-switch freezes
+        // die at their disk roots — ReceivedFileMeta now keeps a warm cache
+        // (it re-read and re-parsed its JSON on EVERY per-row senderFor
+        // call) and renderHistoryTab moves the cold HistoryStore load onto
+        // Dispatchers.IO like the Received tab always did.
+        // ── FINAL PASS 7 (versionCode 79 — native text-selection ──
+        // reconstruction, incoming-transfer reliability & card metadata
+        // corrections): the Text Sender modal is rebuilt on the app's own
+        // KNOWN-GOOD editing-window recipe — a plain android.app.Dialog on
+        // Theme_Translucent_NoTitleBar with a plain framework EditText from
+        // the activity context (the exact scaffold the working rename
+        // dialogs use; the custom AppCompatDialog+TransparentModal window
+        // every prior pass kept was the last nonstandard layer left), with
+        // FP6's IME_FLAG_NO_EXTRACT_UI retained; the intermittent
+        // notification-without-incoming-sheet race is closed at its
+        // presentation half — BottomSheet.show()'s posted entrance can be
+        // cancelled by a window-focus transition (returning from the
+        // first-launch permission settings screen), leaving the sheet
+        // isShowing-but-invisible forever, so the 500ms reconciliation tick
+        // now ALSO checks visual state (entranceSettled + rootTranslationY
+        // + a 1s grace) and rebuilds a stranded sheet, and onResume
+        // reconciles immediately instead of waiting up to 500ms; the
+        // Received/History metadata line's invisibility was a CONTRAST bug
+        // — text_muted #676E77 on bg_secondary #2A2E37 computes 2.64:1,
+        // below every legibility floor — now text_secondary #8F97A3 at
+        // 4.61:1 (WCAG AA) and 11sp; and no History card carries an
+        // individual ✕ anymore (the last one, the interrupted-receive
+        // partial-discard control, is scoped to the Active tab where its
+        // Pause/Resume/Resend siblings live).
+        // ── FINAL PASS 6 (versionCode 78 — native text selection, History ──
+        // text viewer scrolling & the complete Received/History card
+        // redesign): the Text Sender's long-press selection finally traced
+        // to its AOSP root cause — Editor.extractedTextModeWillBeStarted()
+        // silently cancels the platform's whole selection chain whenever the
+        // connected IME serves the field in extract/fullscreen mode, which
+        // Android 14 keyboards do by default for a multiline dialog field
+        // with no imeOptions; the fix is the per-field
+        // IME_FLAG_NO_EXTRACT_UI opt-out (plus the removal of GP14P2's
+        // setTextIsSelectable(true), a read-only-TextView API that was
+        // adding editor-state risk to an editable field), and the web
+        // composer's card finally drops the translateZ(0) compositing layer
+        // GP9's comment claimed removed; the History text-message viewer is
+        // rebuilt as a three-region modal (header / independently scrolling
+        // selectable body / pinned Close+Copy) and the Queue text viewer's
+        // body is selectable too; ZIP-streamed History cards lose their
+        // redundant individual ✕ (Hold & Select remains the removal path);
+        // both tabs' cards get the polished shared rhythm (14/10 padding,
+        // 40dp thumbnails with a 12dp gap, 13sp titles, one muted metadata
+        // row, 32dp ⋮ touch targets, Received-only ⋮ and badge rules kept),
+        // History's direction wording becomes "Received from/Sent to
+        // [Device]", and Open With's glyph becomes ic_arrow_forward.
+        // ── FINAL PASS 5 (versionCode 77 — Received/History card refinement, ──
+        // item actions, metadata cleanup & internal media players): the
+        // Received ⋮ menu gained Open With (the platform app-selection picker
+        // over the same FileProvider URI+MIME, never disturbing the saved
+        // default) and Show in History (exact-record matching by the file's
+        // absolute path across store entries, folded folder runs and live
+        // rows; a comfortable scroll + the Files sheet's own reveal-flash
+        // highlight; an honest toast for a missing record); sender-origin
+        // labels ("From Windows · Chrome") now render on History cards only
+        // (Received cards are cleaner and more compact — the metadata itself
+        // is untouched); the separate Install button is removed from APK
+        // cards in BOTH tabs (the card click now routes straight to the
+        // permission-gated installer, exactly the flow the button ran);
+        // renaming a Received item preserves its original position and
+        // "[Time] ago" age (ReceivedRegistry.record gained a preserved-stamp
+        // parameter — the fresh "now" stamp was what re-birthed the row);
+        // long Received titles pre-shorten to "head…tail" so extensions stay
+        // identifiable while the real width-measured MIDDLE ellipsis handles
+        // the actual fit; the ⋮ moved to the TOP-RIGHT of the title row as a
+        // permanent shell slot (no add/remove on rebind, never in the gray
+        // metadata row); the purple Received direction badge is hidden on
+        // the Received tab only; and images/videos open in the internal
+        // previewer while audio opens in the shared music controller from
+        // Received, History, folder children and the Transfers browse sheet
+        // (reusing the Send tab's queue-preview entry and Track shape
+        // verbatim — no second player implementation).
+        // ── FULL FINAL PASS 4 (versionCode 76 — corrective pass over FINAL ─
+        // PASS 3): the text-viewing modal's scroller was INERT (a higher-
+        // specificity legacy override beat the Pass 3 rule — cascade fix);
+        // the incoming-request placeholder sweep now has liveness (a sender
+        // keep-alive poll covers the manifest-build window, ZIP streaming's
+        // longest silence) plus atomic removal and an "unknown → re-announce
+        // once" heal; text Quick Share/Paste joined the normal Active-tab
+        // lifecycle (pre-registered Waiting rows, complete-on-consume, no
+        // auto-fail sweeps); the clipboard fallback honors execCommand's
+        // boolean; the browser ZIP-batch rows carry the zipStream marker
+        // (full History selection parity); the Received ⋮ can never go
+        // stale on recycled cards and sits beside the metadata.
+        // ── FULL FINAL PASS 3 (versionCode 75 — ZIP-stream History selection, ─
+        // incoming-request delivery reliability, text clipboard workflow,
+        // waiting/failed transfer semantics & Received/History card
+        // refinement): the streamed-ZIP History row selects through every
+        // existing method (the filePath gate that excluded it now honors its
+        // isZipStream marker, and the flag rides the durable History record
+        // so a restart keeps it); a LIVE sender's still-pending incoming
+        // push never ages out from its birth time (the sweep's still-pending
+        // branch now requires sustained sender silence, closing the rare
+        // "notification heard, sheet never shows, resend works" hole), and
+        // an UNDECIDED browser offer no longer auto-fails at 5 minutes;
+        // incoming texts gain a direct Copy beside View (copy-then-consume,
+        // never falsely consumed) and Accept All combines texts into ONE
+        // clipboard payload joined with the native receiver's exact blank-
+        // line separator instead of downloading .txt files; failed items
+        // are never automatically re-sent to the browser (both the server's
+        // re-arm sweep and the client's bounded auto-retry are removed) and
+        // recovery is explicit — per-row Resend (renamed from Retry) and the
+        // failed pill's new Resend Failed beside Clear Failed, visible from
+        // the first failure; the Received/History cards drop the Done pill
+        // and move device + time metadata under the title beside the
+        // thumbnail; the Received tab gains a per-card ⋮ menu (Share via the
+        // existing FileProvider grant, Rename through the same improved
+        // modal with registry follow-through); the web text-viewing modal
+        // scrolls its body with Copy/Download always visible and no Cancel;
+        // Full Access's bulk buttons read Accept All / Decline All.
+        // ── FINAL PASS 3 (versionCode 74 — ZIP-stream size accuracy, ────────────
+        // reconnection status cleanup, reconnection-speed investigation &
+        // hotspot/mobile-data routing): completed ZIP-streamed transfers now
+        // carry their REAL final size — stamped at the completion instant
+        // from the received file's own length (receiver) or the exact
+        // streamed byte count (sender), persisted through the HistoryStore
+        // hook so Received and History render the actual figure instead of
+        // "?" (legacy -1 entries self-heal at render time from the file
+        // itself; all other transfer modes are untouched). The Active tab's
+        // streamed-ZIP waiting rows drop the "Next attempt restarts from
+        // 0 MB" caption — the "Auto-Continue on Reconnection" chip alone
+        // tells the story, the reconnection machinery itself unchanged.
+        // The post-reconnection speed question was investigated at the code
+        // level: every re-attempt runs the identical connection/pipeline/
+        // buffer configuration with a freshly armed speed baseline, so no
+        // app-level regression exists and nothing was changed. And every
+        // app-to-peer HTTP connection (transfer POSTs, probes, manifests,
+        // control links, liveness pings) is now opened through PeerHttp,
+        // which routes each request on the network that actually reaches
+        // the peer — fixing the sender-with-mobile-data + internet-less
+        // hotspot case where discovery (UDP broadcast) worked while the
+        // transfer (routed at the cellular default network with no route
+        // to the hotspot subnet) sat in Waiting until mobile data was
+        // disabled. Ordinary networks, mobile-data-off hotspot transfers
+        // and all other functionality behave exactly as before.
+        // ── FINAL PASS 2 (versionCode 73 — transfer continuity, connection ──────
+        // isolation, filesystem actions, selection reliability & modal polish):
+        // the streamed ZIP's "Auto-Continue on Reconnection" state machine (one
+        // logical card on both sides across reconnects, restart-from-0 honesty,
+        // no duplicate incoming card, no transient Failed flash, per-generation
+        // skip ledger); the lost-accept race in the manifest replacement closed
+        // at the source (placeholder decisions are atomic with the install);
+        // /api/ping classified native-only so a native peer can never pop the
+        // browser Connection Request modal; Rename/New-Folder modals sized
+        // professionally with never-cropped buttons; empty folders Copy/Cut/
+        // Paste correctly (destination tree created before files, no source
+        // data loss); the Files sheet's paste bar reserves list space so the
+        // last item stays reachable; the selection indicator stays
+        // authoritative over late-loading thumbnails; Hold & Slide arms ahead
+        // of the platform's real long-press timeout and keeps its arm through
+        // horizontal pre-slide movement in Files/Media/Music/Apps; Auto Send /
+        // Auto Accept renamed Quick Send / Quick Accept throughout the UI.
+        // Details: FINAL-PASS-2.md.
+        // ── FINAL PASS 1 (versionCode 72 — complete transfer-system ──────────────
+        // stabilization): the keep-alive body-stream cache that poisoned
+        // pooled connections (the native-to-native ZIP stall at the final
+        // byte count, and the connection-history-dependent folder-child
+        // stalls), the per-connection 45 s body-read window that stops the
+        // receiver falsely aborting slow live-archive senders, the exclusion
+        // wire-shape matcher + incoming-sheet signature that make folder
+        // child declines land on both sides immediately, streamed-ZIP
+        // terminal states resolving as honest Failed-with-Resend, the
+        // window-level autofill exclusion for the settings screen's password
+        // field, the icon-only Active selection toolbar, and Cancel
+        // All/selection support for Auto-Resume-on-Reconnection rows.
+        // Details: FINAL-PASS-1.md.
+        // ── GOAT-PASS 15 (versionCode 71 — transfer performance, ZIP streaming
+        // reliability, folder synchronization, background presence & the
+        // Active-tab selection overhaul): NanoHTTPD now DECODES chunked
+        // request bodies (ChunkedInputStream — the root cause of the
+        // native-to-native ZIP stream never finalizing: the archive's
+        // chunked POST was read as raw framing bytes, corrupting the file
+        // and never reaching EOF); the streamed archive's completion is
+        // verified structurally (transfer/ZipIntegrity — the End Of Central
+        // Directory record must be present before the file is registered;
+        // an interrupted ZIP resolves as an honest failure, never a
+        // "resumable" WFR card that always restarts from byte 0); the
+        // completion tail is prompt (the response leaves the instant the
+        // file is durable, registered and its row Completed — the media
+        // scan, the search-index rebuild (now COALESCED across burst
+        // arrivals) and the batch notification moved to a background
+        // arrival executor, removing the per-file dead time behind the
+        // reported 3–4 s "stuck at 100%" and a large share of folder
+        // per-child overhead); the sender keeps learning the receiver's
+        // live child exclusions while an accepted folder STREAMS (a gentle
+        // 2 s sync poll — both sides converge on the same eligible-child
+        // manifest during the batch, "0/25" instead of a stuck "0/30");
+        // the streamed ZIP row is deliberately never pausable (Transfer
+        // .isZipStream — no Pause button on either side, Pause All skips
+        // it; Cancel/Resend untouched); Nearby Devices keeps a backgrounded
+        // but genuinely running peer visible (the 40 s expiry is now
+        // PROVEN by an HTTP liveness probe before any removal — a peer
+        // whose foreground-service server answers stays listed); Music
+        // thumbnails now land on a row's FIRST visible entry (the
+        // isAttachedToWindow guard that dropped decodes completing inside
+        // RecyclerView's prefetch window is gone — the tag check alone is
+        // the correct guard); the first-time "Send as ZIP" explanation
+        // gained its full BENEFITS and LIMITATIONS body with one
+        // "Understood" action (dismissal leaves ZIP off); Cancel All now
+        // also performs the partial-received cleanup the retired separate
+        // menu action owned; and the Active tab gained the established
+        // selection system with its own header-swapped toolbar (counter ·
+        // Pause · Resume · Cancel · Close) while Received/History replaced
+        // their ambiguous text-Cancel exit with the same minimalist Close
+        // glyph at the far right.
+        // ── GOAT-PASS 14 Phase 1 (versionCode 70 — the unified ZIP streaming, ──
+        // queue-to-ZIP sending, resend reliability & folder transfer integrity
+        // pass): the app-side "Send queue as one ZIP" mode (Settings →
+        // Transfers → "Send queue as one ZIP", default OFF; Phase 2's
+        // Connected-Devices-card toggle will write the same preference) —
+        // each send operation's captured batch goes out as ONE streamed
+        // archive to browser AND native clients through the ONE existing ZIP
+        // system, now shared as transfer/ZipTree + ZipNames +
+        // ZipBatchNaming + ChildExclusions with FileTreeNode's new
+        // SnapshotNode (the immutable send-time snapshot) and ZipBatchNode
+        // (a virtual file streaming the archive live — 256 KB pipe, no temp
+        // file, NO_COMPRESSION, per-generation writers, skip-reporting);
+        // descriptive archive filenames ("First_Second_more__(N_Files).zip",
+        // 60/25-char caps, sanitized, never ".zip.zip"); exact Resend for
+        // failed ZIP transfers (the QSItem's immutable batch / the frozen
+        // session re-stream; "No longer available: …" when a source
+        // vanished; PROBE_ALREADY_COMPLETE short-circuits an
+        // already-delivered archive; a skipped entry is a Failed transfer,
+        // never a silent partial success); folder queue integrity fixed at
+        // the root on every leg (the Queue's root-relative child removals
+        // are pruned out of the native manifest — the old in-walk check
+        // compared mismatched namespaces and never matched — carried
+        // through the browser Quick-Share leg, honored in manifest albums,
+        // and excluded from aggregate sizes: 30 queued with 6 removed
+        // sends exactly 24); incoming per-child ✕ declines resolve BOTH
+        // row stages (waiting and streaming) as Cancelled, are refused at
+        // probe AND write, tombstoned durably, and ride the status polls
+        // as excludedNested so the SENDER resolves the matching rows
+        // Declined; sender/receiver progress synchronization through the
+        // ELIGIBLE manifest (TransferManager.eligibleMembers — a folder
+        // whose eligible children completed reads COMPLETED 100% "25/25",
+        // never stuck at "25/30"/83%; a fully-declined folder reads
+        // Declined; cancelled members keep classic presentation); the
+        // expanded incoming-folder items match the Queue's exact item
+        // presentation ("name · size" labels, 26dp remove buttons); a
+        // pre-existing probe defect repaired (PROBE_DISCARDED shared -3L
+        // with PROBE_REFUSED_DECLINED — the ask-before-resend dialog was
+        // dead code). Phase 2 UI deliberately not started.
+        // ── GOAT-PASS 13 (versionCode 69 — final stabilization): the Android 5 ─
+        // startup crash ROOT-FIXED (cmp.reversed() — Kotlin resolved it to the
+        // Java-8 Comparator.reversed() interface default method, API 24+;
+        // replaced with a plain swapped-argument comparator; the
+        // "material.datepicker.e" frame in the captured crash was only R8's
+        // reuse of a tree-shaken package name for its desugaring dispatch
+        // helper — no Material code calls reversed()); password settings
+        // fixed (the field appears the moment protection is enabled — one
+        // visibility owner, the wrapper; enabling protection with no password
+        // configured is refused at SAVE time, and a blank field preserves the
+        // existing password instead of erasing it); the browser login page
+        // shows the server-authoritative "N attempts remaining" counter and
+        // carries autocomplete="new-password" so browsers stop offering to
+        // save the app-access password; folder Auto-Accept unified with the
+        // ordinary file flow (the GOAT-PASS 11 §7 cancelled-folder tombstone
+        // carve-outs — silent 90 s declines and a 10-minute forced-modal
+        // window — removed: Auto-Accept ON accepts folders instantly, OFF
+        // shows the normal confirmation sheet, exactly like files); Text
+        // Message History rows join range and Hold & Slide selection (the
+        // filePath!=null gate no longer excludes them); the Incoming sheet
+        // never reopens itself after an outside-click close (the dismiss
+        // listener records the LAST-SEEN pending signature, not the stale
+        // build-time one); Android 5 no longer auto-opens the keyboard into
+        // the Files/Music sheets' search (the sheet body claims the dialog's
+        // initial touch-mode focus); and the ENTIRE diagnostic system
+        // (DiagLog crash capture, AppLog rotating log, LogsActivity viewer +
+        // its Settings entry, LumiDropApp, the manifest entry and the
+        // FileProvider internal root) is fully removed.
+        // ── GOAT-PASS 12 (versionCode 68): History reliability (durable ────────
+        // tombstones — every deletion writes both layers, store + engine, and
+        // no merge/late-completion/restart-migration can resurrect a deleted
+        // record; Clear History reuses the selection-delete confirmation
+        // modal; folder records delete with their group tombstoned so
+        // stragglers never re-fold), Quick Share Text's native editing
+        // rebuilt on the platform's own ADJUST_RESIZE window (the custom
+        // IME follower and its mid-gesture re-layouts are gone), password
+        // security (eye/eye-off reveal in Settings + server-enforced
+        // progressive attempt limiting: 5 wrong → 30 s lockout, 5 more →
+        // automatic session block through the EXISTING kicked-clients
+        // system with its existing Unblock), the Auto-Accept folder fix
+        // (announced items pre-accepted at the ANNOUNCE, so no incoming
+        // modal during the manifest walk), the Android 5 diagnostic logging
+        // system (DiagLog — app-private, auto-started at process start via
+        // LumiDropApp, crash-capturing, exportable from the Logs screen;
+        // the crash fix itself is deliberately deferred to GOAT-PASS 13),
+        // the History selection counter (the Received tab's chip, shared
+        // code path), Received/History always opening at the top on tab
+        // entry, the internal Files Sheet restored to its normal size (the
+        // auto full-screen stretch retired), and the Incoming modal's
+        // expanded folder unified with the Queue/Received carded design +
+        // the bottom fade clipped to the card's rounded corners.
+        // (GOAT-PASS 11 history preserved below.)
+        // ── GOAT-PASS 11 (versionCode 67): the complete bidirectional ─────────
+        // folder-cancellation protocol (push-level terminal latch, durable
+        // cancelled-folder tombstones, sender session teardown on refusal,
+        // bulk atomic row resolution + background disk cleanup, no per-file
+        // HTTP storm), the History/Received bulk-deletion capture-before-
+        // delete fix, the Hold & Slide first-item guarantee with the 440 ms
+        // arm, the expanded-folder rim-strip selection exclusion, the
+        // AppCompatDialog text composer with a gesture-frozen IME follower,
+        // the music overlay wedge repair + per-tick re-anchor, the diff-
+        // commit sort scroll, the Auto-Resume-only status count, and the
+        // Android 5 startup-path audit. (GOAT-PASS 9/10 history preserved
+        // below.) Original GOAT-PASS 9 note: transfer reliability, live file ──
+        // synchronization, selection improvements, media loading & Files/
+        // Received UI refinements. (§1) "Clear Partial Received Items" in the
+        // Active tab's ⋮ menu — every "Auto-Resume on Reconnection" receive,
+        // its staging partial, resume-registry entry and orphaned .wsxpart
+        // data removed in one confirmed operation, with sender-side discard
+        // receipts so nothing re-sends or reappears. (§2) The web Quick Text
+        // modal behaves as a professional text field: 16px no-focus-zoom,
+        // explicitly permissive native selection, no GPU-layer/momentum-scroll
+        // interference on old WebKit, and focus inside the open gesture.
+        // (§3) Range selection anchors from a normal CLICK on every surface
+        // (media grid, albums grid, App picker, Received/History tabs) — the
+        // exact contract the Files/Music sheets always had. (§4) Hold & Slide
+        // is the default selection style; edge auto-scroll is faster (2600
+        // dp/s), smooth quadratic, continues past the boundary while the
+        // finger stays down, and now covers the media/albums/app grids too.
+        // (§5) LIVE synchronization: MediaStore observers + a receive-root
+        // FileObserver + mtime-revalidating listing caches + a native fan-out
+        // from the server's filesVersion bump — new files, folders and media
+        // appear in the Files/Music/Media sheets and the web views without a
+        // restart. (§6) Received/History item counters hide during selection
+        // mode. (§7) A newly created folder gets the search-result highlight
+        // (existing reveal machinery, reused verbatim). (§8) Folder-transfer
+        // cancellation is final on both sides: the sender's group cancel
+        // tears its own session down (authoritative entry guards + no ghost
+        // row minting under the cancelled group), and the receiver's group
+        // cancel runs the same full local teardown the sender-side scope=push
+        // handler performs — the "cancelled at 23%, reappeared at 99%" ghost
+        // is closed at every layer. (§9) The Received tab's expanded folders
+        // use the Queue's carded design and batched rendering. (§10) Large
+        // directories (1,800+ items) open without the O(N) DiffUtil cost —
+        // wholesale dispatch above 400 rows in Files and Music. (§11) Taps on
+        // an expanded folder's padding/gaps can never select or collapse the
+        // parent. (§12) Music artwork renders on FIRST bind (in-flight decode
+        // completion dispatches to every waiting row) and album rows carry
+        // their cover. (§13) Open Received Folder deep-links the EXACT SD
+        // card directory via its removable-volume document URI. (§14) Device
+        // discovery reconciles on network change instead of wiping (no
+        // appear/disappear flicker) and transfer sessions re-resolve their
+        // peer by stable device id. Plus the Android 5–7 compatibility
+        // repairs: Collection.removeIf, java.util.Base64, java.nio.file
+        // Files.walk, ConcurrentHashMap.newKeySet and Map.putIfAbsent — all
+        // replaced with API-21-safe equivalents. Full engineering report:
+        // GOAT-PASS-9.md at the repo root.
+        // Defensive: some OEM Android 5.0/5.1 (API 21/22) builds had bugs in the
+        // pure-framework VectorDrawable renderer. The support-library renderer
+        // is more consistently correct across those early devices; harmless on
+        // every other API level since AppCompat just defers to the framework
+        // implementation there anyway.
+        vectorDrawables.useSupportLibrary = true
+    }
+
+    signingConfigs {
+        release {
+            // Release credentials are loaded from the untracked keystore.properties file.
+            // Environment variables are supported for CI and take precedence.
+            def signingProps = new Properties()
+            def signingFile = rootProject.file("keystore.properties")
+            if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+            def storePath = System.getenv("LUMIDROPX_STORE_FILE") ?: signingProps.getProperty("storeFile")
+            def storePasswordValue = System.getenv("LUMIDROPX_STORE_PASSWORD") ?: signingProps.getProperty("storePassword")
+            def aliasValue = System.getenv("LUMIDROPX_KEY_ALIAS") ?: signingProps.getProperty("keyAlias")
+            def keyPasswordValue = System.getenv("LUMIDROPX_KEY_PASSWORD") ?: signingProps.getProperty("keyPassword")
+            if (storePath && storePasswordValue && aliasValue && keyPasswordValue) {
+                storeFile rootProject.file(storePath)
+                storePassword storePasswordValue
+                keyAlias aliasValue
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug   { minifyEnabled false }
+    }
+
+    compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
+    kotlinOptions  { jvmTarget = '11' }
+    buildFeatures  { viewBinding true }
+    packaging { resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' } }
+}
+
+dependencies {
+    // Pass-8 (§16): JVM verification of the transfer engine's acceptance
+    // scenarios (duplicate identity, whole-batch cancel, interrupted/resume,
+    // 300-file stress) — TransferManager is deliberately Android-free so it
+    // runs as a plain unit test.
+    testImplementation 'junit:junit:4.13.2'
+    // GOAT-PASS 10: the REAL org.json on the unit-test classpath — Android's
+    // android.jar stub throws "not mocked" for every JSON call, and the new
+    // PackageInspector tests exercise actual manifest.json parsing (the
+    // production code runs the identical org.json API on-device). Pinned as a
+    // local libs/ jar: the sandbox's mavenCentral was rate-limited (HTTP 429)
+    // during this pass; the artifact is the official org.json:json:20231013.
+    testImplementation files('libs/json-20231013.jar')
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.cardview:cardview:1.0.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.documentfile:documentfile:1.0.1'   // folder picker + zip
+
+    // GOAT-PASS 1: the NanoHTTPD 2.3.1 Maven artifact is REPLACED by a
+    // vendored copy of the same source at
+    // app/src/main/java/fi/iki/elonen/NanoHTTPD.java — identical code, with
+    // three I/O constants raised for transfer throughput (64KB request-body
+    // buffering, 64KB multipart copy loop, 128KB response copy loop; see the
+    // provenance header in that file). The package name is unchanged, so
+    // every existing import compiles as-is, and no external dependency is
+    // added — one is removed.
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+}

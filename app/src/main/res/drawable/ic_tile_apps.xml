@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §tile-icons (post-v1.0): the Quick Share "Apps" tile glyph — the app-
+     grid mark: four rounded squares, the top-right one rendered SOLID with
+     a play-triangle KNOCKOUT (fillType evenOdd) so the grid reads as
+     "launchable applications", not a generic table. Replaces the flat
+     Android robot head that read as an OS logo rather than "your installed
+     apps". Pass-2 refinement: the solid tile now actually carries the play
+     notch its design called for — a subtractive triangle, zero extra ink,
+     legible at 22-24dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Top-left tile (outline) -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M4.4,3.4 L9.2,3.4 C10,3.4 10.6,4 10.6,4.8 L10.6,9.6 C10.6,10.4 10,11 9.2,11 L4.4,11 C3.6,11 3,10.4 3,9.6 L3,4.8 C3,4 3.6,3.4 4.4,3.4 Z"/>
+    <!-- Top-right tile (SOLID with play-triangle knockout — the
+         "launchable app") -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M14.8,3.4 L19.6,3.4 C20.4,3.4 21,4 21,4.8 L21,9.6 C21,10.4 20.4,11 19.6,11 L14.8,11 C14,11 13.4,10.4 13.4,9.6 L13.4,4.8 C13.4,4 14,3.4 14.8,3.4 Z M15.7,5.6 L15.7,8.8 L18.5,7.2 Z"/>
+    <!-- Bottom-left tile (outline) -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M4.4,13 L9.2,13 C10,13 10.6,13.6 10.6,14.4 L10.6,19.2 C10.6,20 10,20.6 9.2,20.6 L4.4,20.6 C3.6,20.6 3,20 3,19.2 L3,14.4 C3,13.6 3.6,13 4.4,13 Z"/>
+    <!-- Bottom-right tile (outline) -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M14.8,13 L19.6,13 C20.4,13 21,13.6 21,14.4 L21,19.2 C21,20 20.4,20.6 19.6,20.6 L14.8,20.6 C14,20.6 13.4,20 13.4,19.2 L13.4,14.4 C13.4,13.6 14,13 14.8,13 Z"/>
+</vector>

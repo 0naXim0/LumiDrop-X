@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keyed-tag id resources. View.setTag(key, value) requires a resource id
+     as the key; these are the app's keyed tags. thumb_bind carries the
+     transfer id a thumbnail ImageView was last bound to WITHOUT destroying
+     the view's plain tag ("thumb"), which findTagged() uses to LOCATE the
+     view inside a row shell — overwriting the plain tag (the v7.x bug)
+     made every rebind after the first unable to find the thumbnail view,
+     so recycled rows kept painting the PREVIOUS item's bitmap. -->
+<resources>
+    <item name="thumb_bind" type="id" />
+    <!-- Pass-28 (#1.2): per-card state of the container-based selection visual
+         (the fill/stroke colors the row's background currently shows, plus the
+         in-flight color animator) — kept in a keyed tag so it never collides
+         with the plain tag the row shell uses for its transfer/group id. -->
+    <item name="sel_visual" type="id" />
+</resources>

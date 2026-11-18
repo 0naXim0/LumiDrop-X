@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LumiDrop X launcher icon — FOREGROUND layer: the LumiDrop mark, a
+    luminous droplet with a four-point light-spark (the "Lumi") at its
+    heart, over a soft accent-purple halo. Mark-only layer over full
+    transparency: the adaptive launcher mask crops wherever it wants and
+    the mark never kisses the edges — the whole glyph sits inside the
+    66dp safe circle at the canvas center.
+
+    Vector gradient fills require API 24; adaptive icons are API 26+, so
+    gradients here are always safe where this file is used.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Lumi halo: soft radial glow of the brand accent behind the drop -->
+    <path android:pathData="M54,23 a31,31 0 1 0 0.01,0 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54" android:centerY="54"
+                android:gradientRadius="31"
+                android:startColor="#4D9172F6"
+                android:endColor="#009172F6" />
+        </aapt:attr>
+    </path>
+
+    <!-- The drop: light-filled teardrop, near-white lavender falling to
+         accent_light at the bulb — reads as a droplet of light. -->
+    <path android:pathData="M54,27
+        C54,36.5 62.2,42.5 66.6,48.8
+        C69.3,52.1 71,54.5 71,57
+        A17,17 0 1 1 37,57
+        C37,54.5 38.7,52.1 41.4,48.8
+        C45.8,42.5 54,36.5 54,27 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="27"
+                android:endX="54" android:endY="74"
+                android:startColor="#F2EFFF"
+                android:endColor="#BFA9FB" />
+        </aapt:attr>
+    </path>
+
+    <!-- The spark: four-point light star centered in the drop's bulb -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,45.5 L56.4,52.6 L63.5,55 L56.4,57.4 L54,64.5 L51.6,57.4 L44.5,55 L51.6,52.6 Z" />
+</vector>

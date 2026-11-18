@@ -1,0 +1,9 @@
+<!-- Pass-44 (§7): scissors glyph for the Files sheet's three-dot Cut action
+     (Material content_cut geometry, restated in the app's 24dp vector
+     format and single-fill style). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF000000"
+        android:pathData="M9.64,7.64c0.23,-0.5 0.36,-1.05 0.36,-1.64 0,-2.21 -1.79,-4 -4,-4 -0.59,0 -1.14,0.13 -1.64,0.36L9.64,10 20,20.97l0,-2.83 -5.03,-4.76L9.64,7.64zM6,8c-1.1,0 -2,-0.9 -2,-2s0.9,-2 2,-2 2,0.9 2,2 -0.9,2 -2,2zM6,20c-2.21,0 -4,-1.79 -4,-4s1.79,-4 4,-4c0.59,0 1.14,0.13 1.64,0.36L4.36,17.64 6,16l3.64,3.64C9.14,19.87 8.59,20 8,20c-0.69,0 -1.36,-0.15 -2,-0.36L6,20zM14.97,11.97l-1.41,-1.41L20,4l0,2.83 -5.03,5.14z"/>
+</vector>

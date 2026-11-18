@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+>
+
+    <!-- Network -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <!-- Storage (legacy API ≤ 29) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"  android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <!-- Storage (API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- All-files access (API 30+) -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- Foreground service — keeps server alive when app is minimised -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Prevent CPU sleep while serving -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Notifications (API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Battery optimisation dialog -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Enumerate installed apps for APK sharing -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Lets the Completed tab's Install action launch the Package
+         Installer directly for a received .apk. Android 8+ additionally
+         gates this per-app behind a user-granted "install unknown apps"
+         toggle (Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES) — this
+         permission is what makes that toggle available to grant in the
+         first place; the Transfers tab checks canRequestPackageInstalls()
+         before attempting an install and sends the user to that screen
+         first if it isn't granted yet. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- GOAT-PASS 10 (background continuity): a partial wake lock held only
+         while transfers are actually in flight (see WakeGuard) so a minimized
+         app never stalls mid-stream on Doze/OEM CPU throttling. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LumiDropX"
+        android:requestLegacyExternalStorage="true"
+        android:largeHeap="true"
+        android:usesCleartextTraffic="true">
+        <!-- usesCleartextTraffic: targetSdk 28+ blocks the app's own outbound
+             cleartext HTTP by default. That default never touched the
+             embedded server (LumiDropServer/NanoHTTPD is a raw listening
+             socket, outside this policy entirely — it's why browser access
+             always worked with no config here), but it silently failed
+             every single NativePushClient request (Phase 14 native-peer
+             push, java.net.HttpURLConnection to http://<peer-ip>:<port>/…)
+             — the first code in this app acting as an outbound HTTP client.
+             Requests neither the sending peer's port nor the receiving
+             peer's IP are knowable in advance (DHCP-assigned, whatever
+             subnet the current hotspot happens to hand out), so a Network
+             Security Config domain/IP allowlist isn't workable here the way
+             it would be for a handful of fixed API hosts; the app's entire
+             purpose is unencrypted local-network transfer, matching the
+             server side it already talks to. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustPan">
+            <!-- ── Pass-27 (#1.C): adjustResize → adjustPan ────────────────────────
+                 The main window hosts NO text inputs of its own (every EditText
+                 lives in its own dialog/sheet window — the Text Share modal, the
+                 rename dialog, the pickers' search fields — and each of those
+                 windows carries its own SOFT_INPUT_ADJUST_RESIZE). But the main
+                 window WAS adjustResize, and on Android 11+ the IME insets are
+                 dispatched to EVERY visible window: opening the Text Share
+                 modal's keyboard resized the MAIN window behind it too, which
+                 relaid out the whole Send tab and visibly resized the Connected
+                 Devices card for exactly as long as the keyboard was up (the
+                 reported "card changes size then returns"). adjustPan keeps the
+                 main window's frame STABLE whenever any keyboard opens: no
+                 resize, no relayout, no card movement — the Settings tab's own
+                 two inline fields still pan into view above the keyboard, which
+                 is the classic correct behavior for a window without
+                 edge-to-edge inset handling of the IME. Dialog windows keep
+                 their own resize behavior and are unaffected. -->
+            <!-- Part 4.6 fix: this used to also carry
+                 android:screenOrientation="portrait", which locks the
+                 Activity to portrait at the OS level — landscape wasn't
+                 broken so much as entirely disabled; rotating the device
+                 did nothing at all. Removing that lock is what actually
+                 lets landscape happen; configChanges alongside it is what
+                 keeps it from breaking once it can: without it, a real
+                 rotation destroys and recreates this Activity, and with it
+                 every Fragment (SendFragment/TransfersFragment/
+                 SettingsFragment, all shown/hidden rather than replaced —
+                 see this Activity's own class doc) and every open Dialog/
+                 BottomSheet they're showing, none of which persist their
+                 state through onSaveInstanceState. configChanges means the
+                 system instead just re-measures the existing view tree at
+                 the new size/orientation — exactly what "handle rotation
+                 without breaking modals/dialogs currently displayed" is
+                 asking for, and the standard, well-established mechanism
+                 for it in a single-Activity app with runtime UI state this
+                 extensive. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".settings.WebUiSettingsActivity"
+            android:exported="false"
+            android:label="Web Client Settings"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- Phase 17: SettingsActivity and TransfersActivity are gone —
+             both screens are now Fragments (SettingsFragment,
+             TransfersFragment) hosted inside MainActivity's own bottom-nav
+             shell, switched via FragmentManager show()/hide() instead of a
+             separate Activity + startActivity() transition per tab. -->
+
+        <!-- Auto-restart broadcast: SettingsFragment sends this when a
+             server-dependent setting changes. Handled directly by
+             RestartServerReceiver.kt (manifest-registered — no runtime
+             registerReceiver() call needed, so no exported-flag concerns
+             across API levels). NOT_EXPORTED keeps it strictly intra-app;
+             SettingsFragment also sets Intent.setPackage() as a second
+             layer, so no other app can trigger a server restart. -->
+        <receiver
+            android:name=".RestartServerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lumidrop.x.ACTION_RESTART_SERVER" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            ServerForegroundService — keeps the HTTP server alive when the host app
+            is minimised. Uses dataSync foreground service type (required on API 34+).
+            Notification channels: wsx_server_ch (persistent status), wsx_progress_ch
+            (upload / zip progress).
+        -->
+        <service
+            android:name=".service.ServerForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- FileProvider — lets the Transfers tab hand a completed transfer's
+             file to another installed app via a content:// Uri (system "Open
+             With" chooser, or the Package Installer for .apk files) without
+             ever exposing a raw file:// path, which is blocked entirely for
+             cross-app Intents since Android 7 (API 24). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+</manifest>

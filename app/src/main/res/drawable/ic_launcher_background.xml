@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LumiDrop X launcher icon — BACKGROUND layer: the brand's deep
+    purple-navy diagonal gradient (#33276B at the top-left to #120F28 at
+    the bottom-right), a step brighter at the top than the previous
+    app canvas so the luminous mark pops while staying unmistakably
+    the same purple family. Drawn as its own adaptive layer (the
+    foreground paints only the mark over transparency) so every launcher
+    mask shape — circle, squircle, rounded square — shows the full
+    gradient canvas edge to edge.
+
+    Vector gradient fills require API 24; adaptive icons are API 26+, so
+    this is always safe where the file is used.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108H0z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="108" android:endY="108"
+                android:startColor="#33276B"
+                android:endColor="#120F28" />
+        </aapt:attr>
+    </path>
+</vector>

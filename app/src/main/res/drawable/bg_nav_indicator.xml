@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18: repurposed. This used to be the sliding underline bar under
+     the selected label; selection is now shown as a pill behind the icon
+     instead (see BottomNavBar.kt), sized via nav_pill_width/nav_pill_height
+     on the view itself, with just shape+color defined here.
+     ══ Pass-25 (#3: capsule indicator) ═════════════════════════════════
+     The complete navigation-bar redesign: the selected-item highlight is
+     now a full CAPSULE — the same radius_pill the bar's own floating
+     background uses — instead of the previous 16dp-rounded rectangle, so
+     the bar's container language and its selection language agree (a
+     capsule bar carries a capsule highlight). radius_pill exceeds the
+     pill's 32dp height, so Android clamps to a perfect stadium at every
+     density. Color unchanged. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_pill"/>
+    <solid android:color="@color/nav_indicator_bg"/>
+</shape>

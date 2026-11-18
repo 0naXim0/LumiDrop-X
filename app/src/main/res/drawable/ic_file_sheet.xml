@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Format icon: SPREADSHEET (xls/xlsx/csv/ods). Post-v1.0
+     §static-format-icons: a page with folded corner plus a real GRID of
+     cells — the instantly-recognized "spreadsheet" mark — with one
+     header row rendered solid so the grid reads as a table rather than
+     graph paper. FormatIcons.tintFor colors it the dedicated sheet
+     green. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M14,2.5 L6.5,2.5 C5.7,2.5 5,3.2 5,4 L5,20 C5,20.8 5.7,21.5 6.5,21.5 L17.5,21.5 C18.3,21.5 19,20.8 19,20 L19,7.5 L14,2.5 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,2.5 L14,6.6 C14,7.1 14.4,7.5 14.9,7.5 L19,7.5 Z"/>
+    <!-- Header row (solid) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.4,9.2 L16.6,9.2 L16.6,11.3 L7.4,11.3 Z"/>
+    <!-- Grid -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M7.4,13 L16.6,13 M7.4,15.4 L16.6,15.4 M7.4,17.8 L16.6,17.8 M10.3,11.3 L10.3,19.7 M13.7,11.3 L13.7,19.7"/>
+</vector>

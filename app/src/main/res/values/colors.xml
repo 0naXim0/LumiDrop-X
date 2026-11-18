@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core palette — Phase 18: brought in line with the AI-Studio design
+         prototype's exact values (ui/theme/Color.kt in the design project).
+         Old Phase 15-17 hex kept in comments for anyone diffing history. -->
+    <color name="bg_deep">#191B21</color>              <!-- was #06060f -->
+    <color name="bg_card">#22252C</color>               <!-- was #101020 -->
+    <color name="bg_secondary">#2A2E37</color>          <!-- was #181830 -->
+    <color name="bg_input">#2A2E37</color>              <!-- was #181830 -->
+    <color name="accent">#9172F6</color>                <!-- was #7c5cfc -->
+    <color name="accent_light">#C7B5FD</color>          <!-- was #9b7aff -->
+    <color name="accent_dark">#6A4CD6</color>           <!-- was #5a3edb; darkened proportionally to the new accent -->
+    <color name="text_primary">#E3E5EA</color>          <!-- was #e8e8ff -->
+    <color name="text_secondary">#8F97A3</color>        <!-- was #9090b8 -->
+    <color name="text_muted">#676E77</color>            <!-- was #555577 -->
+    <color name="green">#3E9B4F</color>                 <!-- was #4ade80 -->
+    <color name="orange">#fb923c</color>                <!-- unchanged: no equivalent in the 3-screen prototype -->
+    <color name="red_stop">#E35964</color>              <!-- was #f87171 -->
+    <color name="divider">#343945</color>               <!-- Phase 18 V8: updated to the new palette. Not currently
+                                                                referenced by any layout — Settings groups by card/
+                                                                spacing rather than divider lines — kept available
+                                                                rather than removed, in case a future pass wants one. -->
+    <color name="white">#FFFFFF</color>
+
+    <!-- ══════ Design-system additions (Phase 15-17) ══════
+         All new UI must bind to these rather than declaring raw hex — see
+         bg_btn_primary.xml etc., which used to hardcode the same values. -->
+
+    <!-- Layered / elevated surfaces -->
+    <color name="bg_card_elevated">#22252C</color>      <!-- was #141428; prototype uses one flat card color everywhere -->
+    <color name="bg_nav">#272A34</color>                <!-- was #0b0b18 -->
+    <color name="bg_sheet">#22252C</color>              <!-- Phase 18 V8: matches bg_card_elevated — sheets are
+                                                                conceptually elevated surfaces like cards, so they
+                                                                now read as the same material. Was #12121f (old
+                                                                blue-black, inconsistent with the current palette). -->
+    <color name="bg_input_focused">#2E323C</color>      <!-- Phase 18 V8: a small lift from bg_input (#2A2E37), not
+                                                                a dramatic change — bg_input_field.xml's focus state
+                                                                is carried mainly by its border going to border_focus
+                                                                (accent purple), so the fill only needs to read as
+                                                                "slightly raised," not compete with that. -->
+
+    <!-- Borders -->
+    <color name="border_subtle">#3B404D</color>         <!-- was #2a2a50 -->
+    <color name="border_ghost">#3a3a60</color>          <!-- unchanged for now -->
+    <color name="border_accent_20">#339172F6</color>    <!-- was #337c5cfc; same 20%-alpha prefix, new accent -->
+    <color name="border_focus">#9172F6</color>          <!-- was #7c5cfc -->
+    <color name="border_hairline_light">#14FFFFFF</color> <!-- GOAT v2: ~8% white edge highlight for surfaces
+                                                                 that stay on screen permanently (nav bar,
+                                                                 transfer popup) — fainter than border_subtle,
+                                                                 which bg_dialog.xml uses for temporary modals. -->
+
+    <!-- Scrims -->
+    <color name="overlay_press">#1FFFFFFF</color>
+    <color name="overlay_scrim">#99000000</color>
+
+    <!-- Status-pulse variants (server "online" animated glow) -->
+    <color name="pulse_online">#3E9B4F</color>          <!-- was #4ade80 -->
+    <color name="pulse_pending">#fb923c</color>
+
+    <!-- ══════ Design-system additions (Phase 18) ══════
+         New roles introduced by the AI-Studio prototype with no
+         Phase 15-17 equivalent. -->
+    <color name="nav_indicator_bg">#33295D</color>      <!-- selected nav item's pill background -->
+    <color name="nav_icon_selected">#E4DAFF</color>     <!-- selected nav item's icon tint (label tint uses @color/accent) -->
+    <color name="error_bg">#382328</color>              <!-- reserved: error/empty states, later phase -->
+    <color name="error_border">#532E35</color>
+
+    <!-- ══════ Per-format icon tints (§static-format-icons) ══════
+         One glance-identifiable hue per document family, all validated
+         against the dark row surfaces they tint on (bg_secondary
+         #2A2E37 / bg_btn_secondary). Media/apk rows keep their existing
+         neutral tints; these are the no-thumbnail families whose ONLY
+         identity is the glyph+color pair. -->
+    <color name="file_pdf">#FF7A7A</color>              <!-- soft red — the Adobe-family cue -->
+    <color name="file_doc">#7FB1FF</color>              <!-- document blue -->
+    <color name="file_sheet">#63C97E</color>            <!-- spreadsheet green -->
+    <color name="file_slide">#FFAB5E</color>            <!-- presentation orange -->
+    <color name="file_zip">#F5C46B</color>              <!-- archive amber -->
+    <color name="file_book">#D9A6FF</color>             <!-- ebook violet -->
+    <color name="file_code">#64D5E8</color>             <!-- source cyan -->
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App is always dark — same theme for both day and night -->
+    <style name="Theme.LumiDropX" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryDark">@color/accent_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/bg_deep</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="buttonStyle">@style/Widget.LumiDropX.Button</item>
+        <!-- Pass-26 (#9): mirror the day theme's system-bar colors so the
+             night qualifier can never resurrect the black platform default
+             (the app is always dark; both theme files must agree). -->
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+        <item name="alertDialogTheme">@style/ThemedAlertDialog</item>
+        <item name="android:alertDialogTheme">@style/ThemedAlertDialog</item>
+    </style>
+</resources>

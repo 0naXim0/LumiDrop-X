@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-8 follow-up (redesigned save/cancel dock — both settings screens):
+     the floating save bar's surface. The old bar reused bg_float_bar
+     (bg_card_elevated + a near-invisible hairline), which is the SAME
+     fill as every card on the page — the bar visually melted into the
+     content behind it. This surface is deliberately one step LIGHTER
+     (bg_secondary, #2A2E37 vs the cards' #22252C) with a clearly readable
+     border_subtle edge, so the dock reads as its own elevated layer above
+     the cards. Paired with elevation_sheet (not elevation_card) at the
+     call site, it sits above every card's shadow too. Plain <shape>, not
+     a ripple — the two controls inside carry their own press feedback. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_lg"/>
+    <solid android:color="@color/bg_secondary"/>
+    <stroke android:width="@dimen/stroke_hairline" android:color="@color/border_subtle"/>
+</shape>

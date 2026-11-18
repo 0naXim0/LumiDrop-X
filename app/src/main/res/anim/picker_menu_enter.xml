@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ GOAT-PASS 9 (build repair): the picker menu's dropdown animation ══
+     The code previously referenced android.R.style.Animation_DropDownUp —
+     a NON-public platform style (unresolved at compile time; the GP8
+     source never built with it). This app-owned replacement keeps the same
+     intent — the menu grows UP from its trigger, fast-in/fast-out like a
+     system dropdown: a short 6%-of-height upward translate with a decel
+     fade-in, 140ms. Pure alpha+translate — cheap on every GPU, correct on
+     every API level this app supports (21+). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="140"
+    android:fillAfter="false"
+    android:interpolator="@android:anim/decelerate_interpolator">
+    <translate
+        android:fromYDelta="6%"
+        android:toYDelta="0%"
+        android:fillAfter="false" />
+    <alpha
+        android:fromAlpha="0"
+        android:toAlpha="1"
+        android:fillAfter="false" />
+</set>

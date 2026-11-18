@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-6 (R-B — scroll-edge fade, top): fades the top of the device list
+     INTO the card's own surface as rows scroll under it. Solid card color
+     (#22252C, bg_card_elevated) at the very top edge dissolving downward to
+     fully transparent — a classic scroll-edge fade, NOT a colored glow.
+     angle=270 is top-to-bottom (startColor renders at the TOP edge): the
+     old band used angle=90 (bottom-to-top), which painted its opaque end
+     at the WRONG edge — the "inverted / glitched" effect. Sized to
+     edge_fade_size (18dp) so it reads as a hairline reveal, never a wash
+     over content. Drawn on top of the rows from inside devicesListWrap
+     (see fragment_send.xml), and only ever VISIBLE while the list can
+     actually scroll in that direction (SendFragment.updateDeviceEdgeFades). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#FF22252C"
+        android:endColor="#0022252C" />
+</shape>

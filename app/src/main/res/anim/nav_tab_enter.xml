@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-26 (#8): main-tab content transition — ENTER ══════════════════
+     The shown tab's view fades in while rising a short 2.5% of its own
+     height into place — a "shared axis Y" crossfade, the same motion
+     vocabulary Material's navigation patterns use for sibling
+     destinations. 150ms matches the bottom-nav indicator's own crossfade
+     (Motion.DURATION_SHORT), so the pill, the icon tint and the content
+     all settle as ONE transition. Pure alpha+translate on the fragment's
+     own view: no recreation, no state loss, nothing blocks interaction,
+     and the same-duration pair with nav_tab_exit keeps the crossfade
+     seamless (both fragment roots and the window paint bg_deep, so the
+     overlap can never read as a flicker or a blank frame). Decelerate so
+     the content arrives quickly and settles gently. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad">
+    <alpha
+        android:duration="150"
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0" />
+    <translate
+        android:duration="150"
+        android:fromYDelta="2.5%"
+        android:toYDelta="0%" />
+</set>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-26 (#8): main-tab content transition — EXIT ═══════════════════
+     The hidden tab's view fades out while continuing the same upward drift
+     (the other half of the shared-axis crossfade — the outgoing and
+     incoming views move as if one sheet of content is traveling up, which
+     is what makes the swap read as a single fluid motion rather than two
+     unrelated fades). Same 150ms as the enter half so the alphas stay
+     complementary through the whole transition; both roots and the window
+     paint bg_deep, so no seam can show through at any point. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad">
+    <alpha
+        android:duration="150"
+        android:fromAlpha="1.0"
+        android:toAlpha="0.0" />
+    <translate
+        android:duration="150"
+        android:fromYDelta="0%"
+        android:toYDelta="-2.5%" />
+</set>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Covers the full external storage root (Downloads, DCIM, Documents,
+         Music, the configured upload folder, and everywhere else this app
+         already reads/serves files from via its own HTTP server). Sharing a
+         local content:// Uri to a host-installed app for "Open With" is a
+         strictly narrower exposure than what the app already does over the
+         network via LumiDropServer, so this doesn't expand what the app can
+         access — only how a single already-accessible file can be handed to
+         another app on the same device. -->
+    <external-path name="external" path="." />
+    <!-- ── GOAT-PASS 7 Part 2 (§1): REMOVABLE STORAGE (SD card / USB OTG). ──────
+         The external-path entry above maps ONLY the primary emulated volume
+         (/storage/emulated/0); every removable volume mounts under its own
+         /storage/XXXX-XXXX id, which that root can never address — a file
+         browsed off an SD card through the Files sheet failed
+         FileProvider.getUriForFile with "Failed to find configured root that
+         contains /storage/XXXX-XXXX/..." and surfaced as the honest but wrong
+         "This file can't be opened here" toast. This root covers the /storage
+         mount tree (both the removable ids and, redundantly for safety, the
+         emulated prefix — FileProvider always picks the MOST SPECIFIC matching
+         root, so internal-storage files keep resolving through the narrower
+         external-path entry above). The app already holds
+         MANAGE_EXTERNAL_STORAGE (its whole file-server model is built on it)
+         and already browses/reads/serves removable volumes as plain File
+         paths; this entry only lets one ALREADY-accessible SD card file be
+         handed to another app on the same device through a properly-addressed
+         content:// Uri — no new access, no permission change, no SAF
+         workaround. The provider stays exported=false with
+         grantUriPermissions=true, so a Uri only works while this app
+         explicitly grants FLAG_GRANT_READ_URI_PERMISSION per intent. -->
+    <root-path name="storage" path="/storage/" />
+    <!-- GOAT-PASS 13 (§10): the <files-path name="internal"> entry that used
+         to sit here existed solely for the now-removed diagnostic log
+         exports (AppLog/DiagLog/LogsActivity). Nothing else in the app
+         shares a file from internal filesDir through the FileProvider. -->
+</paths>

@@ -1,0 +1,28 @@
+<!-- Final Stabilization (§6): overflow/more affordance for the compact
+     transfer-management control. Simple three-dot vertical, matching the
+     stroke style of the app's other 24dp glyphs.
+     Post-v1.0 legibility pass: dot radius 1.9 -> 2.15 (the glyph's ink
+     coverage was small enough that at 16-18dp it read as faint specks
+     even with a visible tint) — still unmistakably the Material
+     more_vert glyph, just legible at row scale.
+     Post-v1.0 pass 2 (§unmissable-overflow): 2.15 -> 2.4 with a hairline
+     of extra vertical spread (4.85 -> 4.7 start). The user reported the
+     affordance "clickable but invisible" against the shipped build — the
+     true killer there was the mask-only ripple outline erasure (fixed in
+     bg_icon_ripple.xml), and this bolder glyph ensures it can never read
+     as faint again on any panel.
+     Pass-14 (per direct feedback "more minimalist and less bold — its
+     current appearance is too heavy"): with the ripple-erasure bug long
+     fixed, the 2.4-radius + brightest-tint combination now overcorrects
+     into a heavy blob at row scale. Dots back to a refined 1.8 radius
+     with the original 4.85 vertical spread — the classic Material
+     more_vert proportion — and DeviceAdapter renders it 16dp at
+     text_secondary instead of 18dp at text_primary, so the affordance
+     reads as quiet chrome rather than a fourth headline. Still on the
+     full 32dp touch target, so it stays perfectly tappable. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF000000"
+        android:pathData="M12,4.85a1.8,1.8 0 1,0 0.001,3.6A1.8,1.8 0 0,0 12,4.85zM12,10.2a1.8,1.8 0 1,0 0.001,3.6A1.8,1.8 0 0,0 12,10.2zM12,15.55a1.8,1.8 0 1,0 0.001,3.6A1.8,1.8 0 0,0 12,15.55z"/>
+</vector>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18, new: the compact icon-only action group on the server card
+     (clipboard/QR/hotspot), and anywhere else a row of icon buttons needs
+     a single pill-shaped surface behind it instead of individual button
+     backgrounds. radius_pill safely exceeds this row's own half-height,
+     same clamping behavior as bg_nav_bar.xml. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_pill"/>
+    <solid android:color="@color/bg_secondary"/>
+</shape>

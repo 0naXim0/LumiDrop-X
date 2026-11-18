@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-6 (R-B — scroll-edge fade, bottom): the mirrored twin of
+     bg_fade_top — transparent at the top of the band, resolving to solid
+     card color at the very bottom edge, so the last rows dissolve into the
+     card surface as they scroll under it. Same angle=270 top-to-bottom
+     ramp (startColor transparent at the band's top, endColor solid at the
+     band's bottom edge), same 18dp hairline height, same card color — and
+     the same only-when-scrollable visibility discipline. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#0022252C"
+        android:endColor="#FF22252C" />
+</shape>

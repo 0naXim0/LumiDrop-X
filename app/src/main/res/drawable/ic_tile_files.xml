@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §tile-icons (post-v1.0): the Quick Share "Files" tile glyph — a
+     STACKED-DOCUMENTS mark (two overlapping pages, the front one
+     corner-folded), the standard "files" metaphor in professional file
+     managers. Multi-path detail replaces the old single outline page,
+     which read as a bare rectangle at 22dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Back page -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M9.2,4.6 C8.5,4.6 8,5.1 8,5.8 L8,8.2 M8,18.6 L8,19.4 C8,20.1 8.5,20.6 9.2,20.6 L16.8,20.6 C17.5,20.6 18,20.1 18,19.4 L18,9.8 L14,5.9 L9.2,5.9"/>
+    <!-- Front page with fold -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M14.8,2.6 L7,2.6 C6.3,2.6 5.8,3.1 5.8,3.8 L5.8,17 C5.8,17.7 6.3,18.2 7,18.2 L15.8,18.2 C16.5,18.2 17,17.7 17,17 L17,4.8 L14.8,2.6 Z"/>
+    <!-- Fold -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14.8,2.6 L14.8,4.1 C14.8,4.5 15.1,4.8 15.5,4.8 L17,4.8 Z"/>
+    <!-- Text lines -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M8.2,8.2 L14.6,8.2 M8.2,11.2 L14.6,11.2 M8.2,14.2 L12.2,14.2"/>
+</vector>

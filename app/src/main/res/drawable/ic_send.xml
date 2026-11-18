@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-25 (#3: navigation icon set — the SEND glyph, restyled) ═════
+     The complete navigation-bar redesign unifies the three tab icons in
+     one stroke-drawn language (1.65dp round caps/joins, identical inset
+     grid): Transfers (ic_swap) and Settings (ic_settings) were already
+     stroke glyphs, but Send was the app's one FILLED icon — visibly
+     heavier than its neighbors at 24dp and optically out of the set.
+     Redrawn as the classic stroke paper plane, matching the other two
+     glyphs' weight and grid exactly. Used only where "send" already meant
+     send (the nav item, the target picker's rows and dialogs). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M20.5,3.5 L14.55,20.5 L11.15,12.85 L3.5,9.45 Z"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M20.5,3.5 L11.15,12.85"/>
+</vector>

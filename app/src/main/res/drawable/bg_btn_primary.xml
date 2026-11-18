@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Primary action button. Ripple-wrapped (not plain <shape>) so every
+     button using this background gets tactile press feedback for free —
+     see Phase 15 §3 "tactile feedback (subtle scale animations or ripple
+     effects)". RippleDrawable is a framework class (API 21+), not MDC, so
+     this carries no Theme.MaterialComponents risk. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/overlay_press">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <solid android:color="@android:color/white"/>
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <solid android:color="@color/accent_dark"/>
+        </shape>
+    </item>
+</ripple>

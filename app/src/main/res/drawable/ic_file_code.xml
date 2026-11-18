@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Format icon: CODE / markup (js/ts/html/css/py/json/xml...). Post-v1.0
+     §static-format-icons: the universal angle-bracket pair over a
+     baseline — reads as "source file" at any size. FormatIcons.tintFor
+     colors it the dedicated code cyan. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M8.6,6.4 L3.8,12 L8.6,17.6 M15.4,6.4 L20.2,12 L15.4,17.6"/>
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M13.2,4.9 L10.8,19.1"/>
+</vector>

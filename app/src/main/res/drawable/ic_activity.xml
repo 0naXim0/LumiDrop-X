@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-25 (#4.3: Transfers — ACTIVE sub-tab) ═══════════════════════
+     The Active pill previously drew the same circular-arrows refresh
+     glyph as the Connected Devices Refresh button (and the server card's
+     start state) — three near-identical controls, broken apart this pass.
+     "Active" is a LIVE-ACTIVITY concept, and the activity pulse line says
+     exactly that at a glance: a heartbeat trace with its baseline, in the
+     app's stroke language (1.65dp round caps, 24dp grid) so it reads as
+     one designed set beside Received's download arrow (ic_download) and
+     Sent's history glyph (ic_history). Pill selection styling, badge and
+     click behavior are unchanged. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M3,12 H8 L10.6,6.6 L13.4,17.4 L16,12 H21"/>
+</vector>

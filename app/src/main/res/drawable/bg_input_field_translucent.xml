@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ── GOAT-PASS 7 Part 2 (§8): the Media Picker's Albums floating search ────
+     bar — a TRANSLUCENT variant of the app's input-field language. The bar
+     floats over the scrolling album grid inside the content host; the old
+     opaque bg_input fill painted a hard rectangle over the content passing
+     beneath it. This keeps the exact same shape language (radius, hairline
+     stroke, focused-state accent ring) but fills with ~78%-opacity bg_deep,
+     so the album cards scroll VISIBLY underneath while the field's text,
+     hint and cursor keep full contrast on the dark scrim. The focused state
+     lifts the fill a touch and keeps the accent stroke, exactly like the
+     base field's own two states. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <solid android:color="#D61E2027"/>
+            <stroke android:width="1.4dp" android:color="@color/border_focus"/>
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <solid android:color="#C71E2027"/>
+            <stroke android:width="@dimen/stroke_hairline" android:color="#59FFFFFF"/>
+        </shape>
+    </item>
+</selector>

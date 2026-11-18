@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-34 Part 2 (#4): the floating player's next-track glyph — the
+     mirrored counterpart of ic_skip_previous (chevron + cue bar), the
+     standard skip-to-next mark, in the same line-icon language. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M7.2,7.2 L14.2,12 L7.2,16.8 M16.8,7.2 L16.8,16.8"/>
+</vector>

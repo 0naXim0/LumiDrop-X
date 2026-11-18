@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Post-v1.0 fix (invisible icon buttons on Android 14+): this ripple was
+     MASK-ONLY. RippleDrawable.getOutline() deliberately SKIPS the mask
+     layer (AOSP: "populates outline with the first available layer outline,
+     excluding the mask layer"), so a mask-only ripple reports an EMPTY
+     outline — and since API 33 Outline.canClip() returns true
+     unconditionally, every view that pairs this background with
+     clipToOutline=true (Widgets.iconButton since v1.0) clipped its ENTIRE
+     content to an empty region: the button stayed clickable (touch uses
+     view bounds) but its glyph drew NOTHING on Android 14+. Fix: give the
+     ripple a real CONTENT layer — a fully transparent oval. Drawing is
+     unchanged (a transparent layer paints nothing; the ripple remains
+     masked by the mask layer), but getOutline() now resolves to that
+     oval, which for a square view is a circle round-rect that clips
+     correctly on every API level (circles are round-rects internally "to
+     enable clipping" per Outline.setOval). -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/overlay_press">
+    <!-- Content layer: transparent oval — outline provider only, never
+         visible. MUST be a GradientDrawable shape (not another ripple) so
+         GradientDrawable.getOutline() -> Outline.setOoval() runs. -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval">
+            <solid android:color="@android:color/white"/>
+        </shape>
+    </item>
+</ripple>

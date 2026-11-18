@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Post-v1.0 fix (invisible INACTIVE segment labels on Android 14+):
+     DeviceAdapter's mode segments and MediaPickerSheet's tab/chip toggles
+     set `background = null` for their inactive state while clipToOutline
+     stays true — a null background means ViewOutlineProvider.BACKGROUND
+     resolves an EMPTY outline, and on API 33+ clipToOutline with an empty
+     outline clips the view's entire content (text included) to nothing.
+     This drawable is the inactive state instead of null: visually
+     identical (fully transparent fill) but it provides a real rounded-rect
+     outline via its content layer (see bg_icon_ripple.xml's comment for
+     the full RippleDrawable.getOutline / mask-skip analysis), AND it adds
+     a quiet press ripple to the inactive state — a small UX bonus that
+     makes the whole segmented control feel uniformly tappable. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/overlay_press">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp"/>
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp"/>
+            <solid android:color="@android:color/white"/>
+        </shape>
+    </item>
+</ripple>

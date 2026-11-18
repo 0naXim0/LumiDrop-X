@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pass-8 follow-up (redesigned save/cancel dock): the primary Save
+     button — the app's strongest action treatment, a vertical
+     accent → accent_dark gradient (the same shaded-accent depth language
+     as the redesigned incoming-files orb), ripple-wrapped for press
+     feedback, white bold label at the call site. Replaces the old flat
+     accent fill so the one control that matters most on the dock is
+     unmistakably the primary action. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/overlay_press">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <solid android:color="@android:color/white"/>
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/radius_md"/>
+            <gradient android:angle="270"
+                android:startColor="@color/accent"
+                android:endColor="@color/accent_dark"/>
+        </shape>
+    </item>
+</ripple>

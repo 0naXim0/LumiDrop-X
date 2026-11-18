@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18: radius bumped to radius_xxl (32dp, was radius_lg/20dp) and the
+     hairline border dropped — depth now comes from real elevation (applied
+     in Widgets.sectionCard) instead of a border, matching how the prototype's
+     LumiDropCard only uses a shadow, no stroke. GradientDrawable derives its
+     shadow outline from these <corners>, so the cast shadow keeps the
+     rounded shape automatically. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_xxl"/>
+    <solid android:color="@color/bg_card_elevated"/>
+</shape>

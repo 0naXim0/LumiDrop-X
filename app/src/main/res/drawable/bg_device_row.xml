@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GOAT v2: each Connected Devices row is its own container now instead
+     of a bare list row — see DeviceAdapter.kt. Uniform corner radius, same
+     safe elevation+GradientDrawable pattern as bg_card_elevated/
+     bg_quick_share_tile, just a lower fill contrast (bg_secondary, one
+     step up from bg_card_elevated) since this sits ON that card's surface
+     rather than on the screen background. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_md"/>
+    <solid android:color="@color/bg_secondary"/>
+</shape>

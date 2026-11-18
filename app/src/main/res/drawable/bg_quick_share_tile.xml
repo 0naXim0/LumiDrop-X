@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 18, new: Quick Share tile background, matching the prototype's
+     QuickShareButton exactly (20dp corner = radius_lg, SurfaceDark fill).
+     A dedicated drawable rather than reusing bg_btn_secondary, since that
+     one is pinned to radius_md (16dp) for inputs/buttons elsewhere
+     (Settings' Browse/WebUI buttons) and shouldn't shift just because
+     these tiles need a different radius. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_lg"/>
+    <solid android:color="@color/bg_secondary"/>
+</shape>

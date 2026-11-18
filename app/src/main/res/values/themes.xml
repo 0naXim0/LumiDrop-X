@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Theme.AppCompat (not Theme.MaterialComponents) is used deliberately.
+        MDC 1.11 dropped reliable API-21 support in several code paths and
+        causes InflateException crashes on Android 5.x during activity startup.
+        AppCompat's NoActionBar variant has solid API 21 support, carries
+        everything this app actually uses (CardView, SwitchCompat, plain Buttons),
+        and avoids the entire MDC inflation crash class on Android 5 devices.
+    -->
+    <style name="Theme.LumiDropX" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryDark">@color/accent_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/bg_deep</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="buttonStyle">@style/Widget.LumiDropX.Button</item>
+        <!-- ══ Pass-26 (#9): the system-bar surfaces, themed once for EVERY ══
+             activity. The platform default for both bars is opaque BLACK;
+             MainActivity has always overridden them to bg_deep in code, but
+             the sub-settings Activities (Web Client Settings, Application
+             Logs) only did so individually — and any window that missed the
+             override showed the black default. Declaring them here makes
+             bg_deep (the exact color the window itself paints, so the bars
+             read as seamless/transparent edges of the app surface — with
+             the system's light button icons keeping full contrast on the
+             dark fill) the single source of truth for every screen in the
+             app, present and future. -->
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+        <!-- Registered as the app-wide default so every plain
+             AlertDialog.Builder(context) call — the "text field modal"
+             etc. — picks up the dark/purple styling automatically, instead
+             of needing every call site updated individually. Both the
+             AppCompat attr and the platform attr are set since AlertDialog
+             consults whichever one the device/AppCompat version resolves.
+             Pass-26 (#9): the same system-bar colors as the activities, so
+             an alert-style window never flashes a black bar zone while it
+             owns the screen. -->
+        <item name="alertDialogTheme">@style/ThemedAlertDialog</item>
+        <item name="android:alertDialogTheme">@style/ThemedAlertDialog</item>
+    </style>
+
+    <!-- Dark, rounded-corner dialog matching the rest of the app instead of
+         AppCompat's generic (often light, or oddly-defaulted) built-in
+         alert style. parent is still Dialog.Alert — not any MDC dialog
+         style — for the same API-21 reason as the rest of this app. -->
+    <style name="ThemedAlertDialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorPrimaryInverse">@color/text_primary</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowTitleStyle">@style/ThemedAlertDialog.Title</item>
+        <!-- Pass-26 (#9): never a black system-bar zone while an alert-style
+             window owns the screen — the same bg_deep both bars carry in the
+             activity theme (see its own note). -->
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+    </style>
+
+    <style name="ThemedAlertDialog.Title" parent="android:TextAppearance.DeviceDefault.DialogWindowTitle">
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <!--
+        Simple rounded-corner button style.
+        Parent is Widget.AppCompat.Button (no MDC dependency needed).
+        Buttons in this app use custom drawables (bg_btn_primary etc.),
+        so this style only needs to prevent default Material styling from
+        overriding backgrounds — which AppCompat's base button style does
+        correctly without any corner-radius fussing.
+    -->
+    <style name="Widget.LumiDropX.Button" parent="Widget.AppCompat.Button">
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- ── GOAT-PASS 7 Part 2 (§9) → GOAT-PASS 8 (§6): the text-sending ─────────
+         modal's own theme. The Quick Share Text composer is the app's one
+         dialog whose whole purpose is EDITING TEXT. GOAT-PASS 7 moved it off
+         the raw framework android:Theme.Translucent.NoTitleBar onto this
+         AppCompat base — the right direction, but the on-device report after
+         that pass was that long-press STILL produced no Select all / Copy /
+         Paste / Cut and no selection handles. GOAT-PASS 8 (§6) hardens the
+         theme for the platform's floating text-selection machinery:
+           • windowActionModeOverlay is now TRUE — a text-selection ActionMode
+             in a NoActionBar window must overlay the content; on several
+             builds (API 21–22 primary action modes especially, some OEMs
+             beyond) a non-overlay mode in an actionbar-less window fails to
+             attach and the menu simply never appears.
+           • windowIsTranslucent is DROPPED — a transparent windowBackground
+             plus FLAG_DIM_BEHIND already produce the exact visual (the
+             see-through scrim over the app); the translucent WINDOW flag
+             changes the surface's compositing and is one more OEM-variable
+             the selection toolbar has to survive without. Same look, fewer
+             moving parts.
+         The EditText itself is now an AppCompatEditText with no scrollable
+         ancestor and no custom listeners (see showTextShareDialog) — the
+         platform's OWN selection handles, insertion menu and floating
+         toolbar are the whole story. -->
+    <style name="Theme.LumiDropX.TransparentModal" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+    </style>
+
+    <!-- ══ GOAT-PASS 9 (build repair): the picker menu's dropdown ══════════
+         animation. The code previously referenced the NON-public platform
+         style android.R.style.Animation_DropDownUp (unresolved at compile
+         time). This app-owned style keeps the same dropdown feel with
+         public, version-proof primitives. -->
+    <style name="Animation.PickerMenu" parent="android:Animation">
+        <item name="android:windowEnterAnimation">@anim/picker_menu_enter</item>
+        <item name="android:windowExitAnimation">@anim/picker_menu_exit</item>
+    </style>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-25 (#4.2: Connected Devices — REFRESH, redesigned) ══════════
+     The old refresh glyph assembled its arrowheads from squared corner
+     strokes that read as ticks rather than heads, and it was also the
+     exact same drawable two other controls used (the server card's start
+     state and the Transfers Active pill) — the look-alike set this pass
+     breaks apart (those two now have their own glyphs: ic_server_start,
+     ic_activity). With ic_refresh now used ONLY here, it is redrawn as
+     the classic polished double-arrow circular refresh: two clean arcs
+     travelling one shared circle with proper L-shaped arrowhead elbows,
+     on the same inset grid and stroke weight (1.65dp round caps) as every
+     other stroke glyph in the app. The button's click behavior, rotation
+     animation and busy state are untouched. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!-- Upper arc travelling clockwise, feeding the top-right arrowhead -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M5.05,9.55 A7.36,7.36 0 0,1 17.2,7.55 L21,10.36"/>
+    <!-- Top-right arrowhead elbow -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M21,5.45 V10.36 H16.09"/>
+    <!-- Lower arc travelling clockwise, feeding the bottom-left arrowhead -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M18.94,14.45 A7.36,7.36 0 0,1 7.55,17.2 L3,13.64"/>
+    <!-- Bottom-left arrowhead elbow -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M3,18.55 V13.64 H7.91"/>
+</vector>

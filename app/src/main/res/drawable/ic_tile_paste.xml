@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §tile-icons (post-v1.0): the Quick Share "Paste" tile glyph — a
+     clipboard with its spring clip rendered as a real clip shape and
+     filled content lines, the unmistakable "paste from clipboard" mark.
+     Replaces the flat clipboard outline whose clip read as a random bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Clip spring -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M9.4,4.6 L9.4,3.6 C9.4,3.1 9.8,2.7 10.3,2.7 L13.7,2.7 C14.2,2.7 14.6,3.1 14.6,3.6 L14.6,4.6"/>
+    <!-- Clip board across the top -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.2,3.8 L15.8,3.8 C16.3,3.8 16.7,4.2 16.7,4.7 L16.7,5.9 C16.7,6.4 16.3,6.8 15.8,6.8 L8.2,6.8 C7.7,6.8 7.3,6.4 7.3,5.9 L7.3,4.7 C7.3,4.2 7.7,3.8 8.2,3.8 Z"/>
+    <!-- Board -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M6,6.8 C5.3,6.8 4.8,7.3 4.8,8 L4.8,20 C4.8,20.7 5.3,21.2 6,21.2 L18,21.2 C18.7,21.2 19.2,20.7 19.2,20 L19.2,8 C19.2,7.3 18.7,6.8 18,6.8 L6,6.8 Z"/>
+    <!-- Pasted content lines -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M8,10.6 L16,10.6 M8,13.6 L16,13.6 M8,16.6 L12.6,16.6"/>
+</vector>

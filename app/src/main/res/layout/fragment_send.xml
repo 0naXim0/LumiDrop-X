@@ -1,0 +1,1175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LumiDrop X — Premium Host App Layout
+
+    Phase 18 V8: root is a NestedScrollView again (was a fixed, deliberately
+    non-scrolling LinearLayout in the prior pass). Reverting that on purpose
+    — the brief explicitly allows revisiting earlier fixed-layout calls
+    when they cause clipping — because the non-scrolling version had two
+    concrete overflow paths with nothing this composition could do about
+    them: (1) the URL area (Pass-7: a single fixed-height row now — the old
+    multiUrlContainer stacked one row per enabled interface and had nowhere
+    to go inside a hard-constant card).
+    (2) was "cardQueue turning visible pushes Connected Devices past its
+    floor and, on a shorter device, off the bottom of the screen" — that
+    path no longer EXISTS as of Pass-25 (#5): the queue renders INSIDE the
+    Connected Devices card (the shared dynamic card), so selecting files
+    can never change the column's composition at all. The scroll container
+    stays as the honest fallback for genuinely tall content (a very long
+    device list, a rotation to a shorter viewport). Connected Devices' own
+    device list is a RecyclerView now (was ScrollView-in-LinearLayout),
+    which is what makes this safe to nest: RecyclerView implements
+    NestedScrollingChild correctly — see previewList and QueueAdapter.kt's
+    own comment for the same fix already proven for the queue.
+-->
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/sendScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_deep"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:overScrollMode="never">
+
+<!--
+    layout_height is match_parent, not wrap_content, on purpose: combined
+    with fillViewport="true" above, this is what makes cardDevices'
+    layout_weight="1" below keep working exactly as before in the normal
+    case (this LinearLayout gets measured at exactly the viewport height,
+    so weight distribution applies) while still letting the ScrollView
+    take over once actual content genuinely exceeds that height (Android
+    remeasures without forcing viewport height when natural content is
+    already taller than it — see NestedScrollView.fillViewport's own
+    documented behavior). Getting this one attribute wrong silently
+    breaks the "fill remaining space" look this whole screen depends on.
+-->
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="@dimen/nav_bar_clearance">
+
+            <!-- Header row (logo/title/Auto-Send switch) removed per
+                 request to reclaim vertical space: the app's identity is
+                 already established via the launcher icon and the bottom
+                 nav; Auto-Send now lives only in Settings' Transfer Engine
+                 card (autoSendSwitch there), rather than being controllable
+                 from two different places that could drift out of sync. -->
+
+            <!-- ══════ SERVER CARD ══════
+                 Phase 18 V8 (GOAT pass): dropped the send_card_height
+                 minHeight floor and tightened padding/title/spacing. The
+                 floor and Quick Share's matching one were there to force
+                 two differently-sized cards to the same height; the actual
+                 complaint was that the result felt oversized with no
+                 content to justify it, and forcing a shared constant is
+                 the opposite of responsive regardless of how close that
+                 constant happens to land to natural content on any one
+                 reference screen. Each card is sized by what's actually in
+                 it now. bg_hero_gradient is no longer used by this card;
+                 still referenced by nothing else, so it's left in place
+                 rather than deleted in case a later screen wants that
+                 treatment on purpose. -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                app:cardBackgroundColor="@color/bg_card_elevated"
+                app:cardCornerRadius="@dimen/radius_xxl"
+                app:cardElevation="@dimen/elevation_card"
+                app:cardPreventCornerOverlap="false">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- ── Pass-36 Part 2 (#7): the title row is a horizontal bar — ──
+                         "LumiDrop X" keeps its exact position and metrics, the
+                         space to its RIGHT hosts the compact music pill's dock
+                         (serverCardMusicSlot). The slot stays GONE while no
+                         music is loaded, and the pill it hosts is 26dp tall —
+                         at or under the title's own line height — so the
+                         Server Card's height never grows and nothing else in
+                         the card moves. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="LumiDrop X"
+                            android:textColor="@color/text_primary"
+                            android:textSize="20sp"
+                            android:fontFamily="sans-serif-medium" />
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <FrameLayout
+                            android:id="@+id/serverCardMusicSlot"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- Pass-12 (Send tab redesign): ONE status row — the green
+                         status dot, the [LAN] source chip, the complete server
+                         URL, and (only when more addresses exist) the
+                         more-addresses chevron, all on a single line. The old
+                         "Running" label is gone — the running state IS the
+                         green dot plus the visible address — and the old
+                         separate URL row below went with it, which is what
+                         makes the card compact. While stopped or waiting for a
+                         network, the same slot carries the honest status text
+                         ("Server stopped" / "Waiting for network…") in the
+                         URL's muted style. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp">
+
+                        <View
+                            android:id="@+id/tvStatusDot"
+                            android:layout_width="9dp"
+                            android:layout_height="9dp"
+                            android:layout_marginEnd="7dp"
+                            android:background="@drawable/shape_dot" />
+
+                        <TextView
+                            android:id="@+id/urlSourceChip"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:paddingStart="7dp"
+                            android:paddingEnd="7dp"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="2dp"
+                            android:text="—"
+                            android:textColor="@color/accent_light"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:background="@drawable/bg_btn_ghost" />
+
+                        <HorizontalScrollView
+                            android:id="@+id/urlScroll"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:scrollbars="none"
+                            android:overScrollMode="never">
+
+                            <TextView
+                                android:id="@+id/tvUrl"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Server stopped"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12.5sp"
+                                android:fontFamily="monospace"
+                                android:singleLine="true" />
+                        </HorizontalScrollView>
+
+                        <ImageView
+                            android:id="@+id/btnMoreUrls"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_marginStart="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ic_chevron_down"
+                            android:tint="@color/text_secondary"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="All server addresses"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+
+                    <!-- Action row (Pass-12): the compact icon pill now carries
+                         FOUR items — Copy, QR Code, Hotspot, and the Moon
+                         (AMOLED Blackout) toggle that used to sit alone at
+                         the end of the status row. One pill, one visual
+                         rhythm, perfectly aligned 38dp slots. The circular
+                         start/stop toggle keeps its trailing position. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_icon_pill"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp">
+
+                            <ImageView
+                                android:id="@+id/btnCopyUrl"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="9dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_copy"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Copy URL" />
+
+                            <ImageView
+                                android:id="@+id/btnQrToggle"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="9dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_qrcode"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Show QR code" />
+
+                            <ImageView
+                                android:id="@+id/btnHotspotSettings"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="9dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_wifi"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Hotspot settings" />
+
+                            <!-- Pass-12: the Moon (AMOLED Blackout) control,
+                                 moved into the pill as its fourth item - the
+                                 same toggle action it always had, now part of
+                                 the card's single action cluster. -->
+                            <ImageView
+                                android:id="@+id/btnBlackout"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="9dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_blackout"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="AMOLED Blackout Mode" />
+
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <!-- Fill/stroke/icon color all set dynamically per
+                             state in setStartStopStyle() (Kotlin) via
+                             Widgets.circleToggle - same "no static XML
+                             background for state-dependent color" pattern
+                             already used by Widgets.rippleRect elsewhere. -->
+                        <ImageView
+                            android:id="@+id/btnStartStop"
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:padding="15dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ic_server_start"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="Start server" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Incoming file requests (browser uploads) and incoming native
+                 push requests used to each be their own inline card here.
+                 GOAT pass: both now render as one unified BottomSheet (see
+                 SendFragment.updateIncomingRequests) that works from any
+                 tab instead of only being visible while on Send. -->
+
+<!-- ══ Pass-25 (#5): the standalone Queued Files card is GONE — it now ══
+     shares the Connected Devices card's exact position and frame (see the
+     shared card below). Selecting files no longer inserts a card between
+     the Server card and Quick Share: Quick Share, the shared card and the
+     tab's total height stay exactly where they were. -->
+
+            <!-- ══════ QUICK SHARE CARD ══════
+                 Phase 18 V8 (GOAT pass): clipChildren/clipToPadding default
+                 to true on every plain ViewGroup, and nothing here had
+                 overridden them — each tile's elevation shadow (4dp) was
+                 being cut off at its row's own bounds, most visible along
+                 the bottom edge where a drop shadow reads strongest. Set
+                 to false on the card, its content column, and both tile
+                 rows, so the shadow has room to render into the padding
+                 that was already there instead of being clipped before it
+                 reached it. Also dropped the shared minHeight floor (see
+                 the Server card's own note on why) and tightened tile
+                 size/padding to match. -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                app:cardBackgroundColor="@color/bg_card_elevated"
+                app:cardCornerRadius="@dimen/radius_xxl"
+                app:cardElevation="@dimen/elevation_card"
+                app:cardPreventCornerOverlap="false">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="QUICK SHARE"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:letterSpacing="0.08"
+                        android:layout_marginBottom="8dp" />
+
+                    <!-- Phase 18 fix: tiles were <Button>, whose default
+                         theme-driven chrome (independent of the padding/
+                         inset/stateListAnimator overrides already applied)
+                         was interfering with automatic outline computation
+                         from the rounded background - the shadow rendered
+                         using the raw rectangular layout bounds instead of
+                         the drawable's own rounded corners. Converted to
+                         plain LinearLayouts (icon + label, clickable)
+                         instead: the same elevation+GradientDrawable
+                         combination Widgets.sectionCard already uses
+                         without any shadow issue, since a plain ViewGroup
+                         carries none of Button's special-cased chrome. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:layout_marginBottom="8dp">
+
+                        <LinearLayout android:id="@+id/btnQuickShare"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile" android:layout_marginEnd="10dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_files" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Files"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+
+                        <LinearLayout android:id="@+id/btnQuickShareImage"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile" android:layout_marginEnd="10dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_media" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Media"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+
+                        <!-- ── Pass-33 (#6/#7): the Folder tile is RETIRED (folder
+                             selection lives inside the unified Files picker the
+                             Files tile opens now); its slot carries the new
+                             Music tile — same footprint, same tile language. -->
+                        <LinearLayout android:id="@+id/btnShareMusic"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_music" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Music"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false">
+
+                        <!-- ic_text_snippet replaces ic_edit - matches the
+                             prototype's actual icon (a document/text-lines
+                             glyph) instead of an approximate pencil icon. -->
+                        <LinearLayout android:id="@+id/btnQuickShareText"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile" android:layout_marginEnd="10dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_text" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Text"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+
+                        <!-- ic_android replaces ic_package + label "App APK"
+                             shortened to "Apps" - matches the prototype's
+                             actual icon (Icons.Outlined.Android) and label
+                             exactly; ic_package was the "outdated icon" the
+                             brief called out here specifically. -->
+                        <LinearLayout android:id="@+id/btnShareApk"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile" android:layout_marginEnd="10dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_apps" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Apps"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+
+                        <!-- ic_paste replaces ic_copy - matches the
+                             prototype's actual icon (a clipboard glyph,
+                             ContentPaste) instead of a generic copy icon. -->
+                        <LinearLayout android:id="@+id/btnQuickSharePaste"
+                            android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1"
+                            android:orientation="vertical" android:gravity="center"
+                            android:clickable="true" android:focusable="true"
+                            android:elevation="4dp"
+                            android:background="@drawable/bg_quick_share_tile">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
+                                android:background="@drawable/bg_tile_icon_chip">
+                                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_tile_paste" android:tint="@color/accent_light" android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp" android:text="Paste"
+                                android:textColor="@color/text_primary" android:textSize="11sp"
+                                android:includeFontPadding="false" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ══════ CONNECTED DEVICES CARD (Phase 18: always visible now,
+                 per the design prototype — was visibility="gone" when
+                 empty; now shows EmptyStateIllustration instead of
+                 disappearing. minHeight approximates the prototype's
+                 Modifier.weight(1f), which has no direct equivalent in a
+                 NestedScrollView-based layout that also needs to keep
+                 scrolling correctly once the other conditional cards
+                 (queue/incoming/native peers) or a long device list are
+                 also visible — a fixed generous minimum reproduces the
+                 same "big, breathing, prominent" look in the common case
+                 without breaking scrolling in the busy one. ══════ -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardDevices"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:minHeight="@dimen/devices_card_min_height"
+                android:layout_marginBottom="14dp"
+                app:cardBackgroundColor="@color/bg_card_elevated"
+                app:cardCornerRadius="@dimen/radius_xxl"
+                app:cardElevation="@dimen/elevation_card"
+                app:cardPreventCornerOverlap="false">
+
+                <!-- Pass-6 (R-B): the old parent-card "aurora" overlay is GONE.
+                     It put two 54dp purple gradient bands (rendered INVERTED —
+                     angle=90 is bottom-to-top in Android, not top-to-bottom)
+                     over the card permanently, in a color that matched nothing,
+                     at a size that drowned the first and last device rows. The
+                     replacement is a pair of 18dp card-colored scroll-edge fades
+                     hosted INSIDE devicesListWrap below — confined to the list
+                     area, painted in the card's own surface color, and visible
+                     only while the list can actually scroll that way. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <!-- ══ Pass-25 (#5): the dynamic Connected Devices / Queued ══
+                         Files card. This ONE frame hosts TWO sibling content
+                         views and shows exactly one of them at a time
+                         (SendFragment.setSharedCardView is the single writer):
+                           • devicesView — the classic Connected Devices content,
+                             byte-identical to what this card always showed;
+                           • queueView   — the staged/live Queued Files interface
+                             (the former standalone cardQueue), now inside this
+                             card's position, radius, surface and height.
+                         The card's own frame NEVER changes when files are
+                         selected — the tab's total height, Quick Share's
+                         position and this card's latched pin are all stable
+                         by construction, which is exactly what the layout
+                         complaint asked for. Both views fill the column with
+                         weight=1 (the GONE sibling is skipped by LinearLayout),
+                         and clipChildren=false lets each list run flush to the
+                         card's bottom padding the way the devices list always
+                         has (its -10dp bottom margin). -->
+                    <LinearLayout
+                        android:id="@+id/devicesView"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:clipChildren="false">
+
+                    <!-- Phase 18: no more collapse/expand - the header is
+                         now purely informational (label + live count) plus
+                         a manual refresh; the list or empty state below is
+                         always shown directly, never gated behind a tap. -->
+                    <LinearLayout
+                        android:id="@+id/devicesHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <!-- ── GOAT-PASS 14 Phase 2 (§1.1): the card's title is ────
+                             "NEARBY DEVICES" now — the same 12sp/
+                             letterSpacing 0.08 caption style, one word
+                             SHORTER than "CONNECTED DEVICES", so the
+                             header row (title + count + the top-right
+                             control cluster) keeps its exact rhythm and
+                             gains a little slack on narrow screens (slack
+                             the new ZIP-mode control directly benefits
+                             from — see btnZipModeToggle below). Purely
+                             the label; discovery, connection and every
+                             other behavior are untouched. -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="NEARBY DEVICES"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:letterSpacing="0.08" />
+
+                        <!-- Live count badge — hidden until there's a device -->
+                        <TextView
+                            android:id="@+id/tvDeviceCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="5dp"
+                            android:text=""
+                            android:textColor="@color/accent"
+                            android:textSize="10sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:visibility="gone" />
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <!-- ══ Pass-25 (#5.4): the view-switch control, devices side ══
+                             The same ic_view_switch glyph the Queued Files top
+                             row carries, in the same 24dp ripple cell style as
+                             the Refresh button beside it (untinted, like
+                             Refresh, so the header row reads as one cluster).
+                             SendFragment shows it ONLY while a queued selection
+                             exists — with an empty queue there is no second
+                             view to switch to and the header is exactly as it
+                             always was. -->
+                        <!-- ══ Pass-29 Part 1 (#4): the two transfer quick ══
+                             toggles — Auto Send (paper-plane) and Auto Accept
+                             (download). Icon-only cells in the exact 24dp
+                             language of the Refresh / Block / switch controls
+                             beside them; the ONLY difference between their
+                             states is the tint — accent when the feature is
+                             on (the same active-accent the device-count
+                             badge uses), text_secondary when off — so they
+                             read as quiet native header controls, never as
+                             newly attached switches. Both write the ONE
+                             shared SettingsManager preference the Settings
+                             tab's toggles use (no second state anywhere),
+                             and SendFragment paints them from that truth on
+                             every setup, tab return, and toggle. -->
+                        <ImageView
+                            android:id="@+id/btnAutoSendToggle"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="6dp"
+                            android:src="@drawable/ic_send"
+                            android:tint="@color/text_secondary"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="Quick Send" />
+
+                        <ImageView
+                            android:id="@+id/btnAutoAcceptToggle"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="6dp"
+                            android:src="@drawable/ic_download"
+                            android:tint="@color/text_secondary"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="Quick Accept" />
+
+                        <!-- ══ GOAT-PASS 14 Phase 2 (§2): the ZIP SENDING MODE ══
+                             quick toggle — the app-side Phase 1 setting
+                             ("send queue as one ZIP") finally surfaced in the
+                             Nearby Devices header, exactly where the task
+                             placed it: the same top-right control row as
+                             Refresh / Auto Send / Auto Accept, in the same
+                             24dp ripple-cell geometry (identical size,
+                             padding, 6dp spacing and stroke-drawn glyph —
+                             ic_zip_mode, the archive box in ic_send's
+                             language). It writes the ONE shared
+                             SettingsManager preference the Settings screen's
+                             own switch persists (zip_send_enabled — no second
+                             state anywhere); SendFragment.paintQuickToggles
+                             tints it accent-while-on / secondary-while-off
+                             from that truth, on this row AND in the Queue
+                             Files face (btnZipModeToggleQueue — §4), so both
+                             exposures can never disagree. The FIRST enable
+                             routes through the §3 explanation modal
+                             (zip_send_explained_ack gates it — see
+                             SendFragment.toggleZipSendMode); disabling is the
+                             plain preference flip. The mode is read at the
+                             START of every send operation (Phase 1's
+                             zipSendModeOn), so an already-started transfer
+                             keeps its original behavior no matter when this
+                             icon is tapped. -->
+                        <ImageView
+                            android:id="@+id/btnZipModeToggle"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="6dp"
+                            android:src="@drawable/ic_zip_mode"
+                            android:tint="@color/text_secondary"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="Send as ZIP" />
+
+                        <ImageView
+                            android:id="@+id/btnSwitchCardViewDevices"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="6dp"
+                            android:src="@drawable/ic_view_switch"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:visibility="gone"
+                            android:contentDescription="Switch to Queued Files" />
+
+                        <!-- ══ Pass-18: blocked-clients indicator ══
+                             Minimalist no-entry glyph, LEFT of the Refresh
+                             icon, rendered in the warning orange. Visible
+                             ONLY while ≥1 browser client is blocked this
+                             session (SendFragment drives visibility from the
+                             server's hasBlockedClients() on every devices-UI
+                             refresh, so it appears the moment a Kick lands
+                             and disappears the instant the last blocked
+                             device is unblocked). The tap opens the blocked-
+                             devices sheet with a per-device Unblock action —
+                             a block no longer needs a server restart to
+                             undo (restarts still clear everything, exactly
+                             as before). Same 24dp icon cell, ripple and
+                             padding as btnRefreshDevices beside it. -->
+                        <ImageView
+                            android:id="@+id/btnBlockedDevices"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="6dp"
+                            android:src="@drawable/ic_blocked"
+                            app:tint="@color/orange"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:visibility="gone"
+                            android:contentDescription="Blocked devices" />
+
+                        <ImageView
+                            android:id="@+id/btnRefreshDevices"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_refresh"
+                            android:background="@drawable/bg_icon_ripple"
+                            android:padding="4dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:contentDescription="Refresh" />
+
+                    </LinearLayout>
+
+                    <!-- Empty state (Phase 18, new): the prototype's dashed
+                         rotating ring + phone/monitor icons, shown whenever
+                         there are zero active devices. Fills the same
+                         remaining space (weight=1) that devicesList
+                         below takes when there ARE devices - exactly one
+                         of the two is visible at a time. No width/height
+                         here on purpose: SendFragment sets sizeDp in code,
+                         which drives both the outer size and the inner
+                         ring/icons together (see EmptyStateIllustration). -->
+                    <LinearLayout
+                        android:id="@+id/devicesEmptyState"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp">
+
+                        <com.lumidrop.x.ui.EmptyStateIllustration
+                            android:id="@+id/devicesEmptyIllustration"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="No devices connected"
+                            android:textColor="@color/text_primary"
+                            android:textSize="15sp"
+                            android:fontFamily="sans-serif-medium" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:paddingStart="24dp"
+                            android:paddingEnd="24dp"
+                            android:text="Nearby devices running LumiDrop X on your local network will appear here."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp"
+                            android:gravity="center"
+                            android:lineSpacingExtra="2sp" />
+
+                    </LinearLayout>
+
+                    <!-- Device list — Phase 18 V8: RecyclerView, not a
+                         ScrollView+LinearLayout (was the same nested-
+                         scrolling problem QueueAdapter's own comment
+                         describes for the old queue implementation: a
+                         plain ScrollView nested inside a scrolling
+                         ancestor — now the whole Send screen, see the
+                         file's top comment — doesn't correctly negotiate
+                         touch/scroll priority with it).
+
+                         Pass-5 (R1 — THE layout regression fix): this
+                         wrapper used to stay VISIBLE even with zero devices
+                         (only the RecyclerView inside went GONE), so it and
+                         devicesEmptyState — both weight=1 — SPLIT the card's
+                         remaining height down the middle. On a 220dp card
+                         each got ~84dp: the fixed 96dp ring illustration
+                         clipped top and bottom ("broken ring"), its two text
+                         lines pushed out of the clipped bounds ("no text
+                         visible"), and the captured list height used with
+                         devices present was that same squeezed ~84dp — a
+                         one-row cramped list with edge fades painted over
+                         the rows (the "two black gradient glitches"). The
+                         wrapper now goes GONE with the list it hosts, the
+                         empty state owns the FULL area at its correct size,
+                         and the captured list height is the real one.
+                         nestedScrollingEnabled=false (Pass-3 R2) stays. -->
+                    <FrameLayout
+                        android:id="@+id/devicesListWrap"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="-10dp"
+                        android:visibility="gone">
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/devicesList"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:clipToPadding="false"
+                            android:paddingBottom="24dp"
+                            android:nestedScrollingEnabled="false"
+                            android:overScrollMode="never"
+                            android:scrollbars="none"
+                            android:visibility="gone" />
+
+                        <!-- Pass-6 (R-B): card-colored scroll-edge fades, drawn
+                             ON TOP of the rows (later children of this wrapper
+                             paint above the RecyclerView) so device rows glide
+                             under them and dissolve into the card surface at
+                             the list's rim. 18dp (edge_fade_size), the card's
+                             own #22252C — never purple, never oversized — and
+                             gated on real scrollability in Kotlin
+                             (updateDeviceEdgeFades), so they are INVISIBLE
+                             while the list fits and whenever that edge is
+                             already flush. -->
+                        <View
+                            android:id="@+id/devicesFadeTop"
+                            android:layout_width="match_parent"
+                            android:layout_height="@dimen/edge_fade_size"
+                            android:layout_gravity="top"
+                            android:background="@drawable/bg_fade_top"
+                            android:visibility="gone" />
+
+                        <View
+                            android:id="@+id/devicesFadeBottom"
+                            android:layout_width="match_parent"
+                            android:layout_height="@dimen/edge_fade_size"
+                            android:layout_gravity="bottom"
+                            android:background="@drawable/bg_fade_bottom"
+                            android:visibility="gone" />
+                    </FrameLayout>
+
+                    </LinearLayout> <!-- /devicesView — Pass-25 (#5) -->
+
+                    <!-- ══ Pass-25 (#5): the QUEUED FILES view of the shared ══
+                         card. The actual existing queue interface (count + size
+                         figure, Send, Clear, the removable file-chips list) —
+                         nothing about its functionality changes; it now renders
+                         inside the Connected Devices card's own frame. The top
+                         row is the Pass-25 (#5.5) redesign: a cleaner
+                         hierarchy with the count figure on a weighted leading
+                         slot, the small view-switch glyph, then Send and Clear
+                         sized to match; the chips list fills whatever space
+                         the card has below it (0dp/weight=1 — the old fixed
+                         220dp box lived in a card of its own) with the same
+                         scroll-edge fades + minimalist scrollbar, and the same
+                         -10dp bottom margin that puts the fade flush to the
+                         card's bottom padding. -->
+                    <LinearLayout
+                        android:id="@+id/queueView"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:clipChildren="false"
+                        android:visibility="gone">
+
+                        <!-- ── Pass-25 (#5.5): the redesigned top row ──────────
+                             One balanced line: the compact view-switch glyph,
+                             then the two actions with matching heights and
+                             consistent 8dp rhythm.
+                             ── Pass-28 (#2.1/#2.2): RESTORED to the original
+                             Pass-25 geometry. The extra "QUEUED FILES" caption
+                             Pass-27 added here is REMOVED — it was never
+                             part of the working design and took space the
+                             controls could need on narrow screens. The leading
+                             slot is back to being the WEIGHTED empty slot it
+                             originally was (minus the pill, which now lives
+                             in the card's bottom frame): weight=1 absorbs
+                             every pixel of slack, so the switch glyph and the
+                             Send/Clear buttons keep their exact original
+                             positions and can never be pushed, shifted,
+                             collapsed or cropped at any screen width. The
+                             row's height is untouched (single line, same
+                             vertical metrics as before). -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginBottom="10dp">
+
+                            <!-- The original weighted leading slot, kept EMPTY
+                                 (the pill moved to the bottom frame below).
+                                 Same id as before so the geometry contract is
+                                 identical; clipChildren=false matches the
+                                 original slot too. -->
+                            <FrameLayout
+                                android:id="@+id/previewTitleSlot"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:clipChildren="false" />
+
+                            <!-- ══ GOAT-PASS 14 Phase 2 (§4): the ZIP SENDING ══
+                                 MODE control in the Queue Files face — the
+                                 SAME one setting the Nearby Devices header's
+                                 btnZipModeToggle writes (SettingsManager's
+                                 zip_send_enabled; there is deliberately NO
+                                 second ZIP preference and no second state
+                                 variable), so this row's control and the
+                                 Devices header's control are two painted
+                                 views of one truth: SendFragment's single
+                                 paintQuickToggles tints BOTH on every setup,
+                                 tab return and toggle, and a tap on either
+                                 immediately re-paints the other. Placed
+                                 immediately LEFT of the existing card-switch
+                                 glyph (btnSwitchCardView) in that icon's own
+                                 32dp/6dp-padding cell geometry, so the row's
+                                 rhythm — weighted slot → ZIP → switch →
+                                 Send → Clear — stays balanced and the
+                                 switch's position and function are untouched.
+                                 The first-enable explanation modal and the
+                                 read-at-send-time contract are shared with
+                                 the Devices-side control (§2/§3). -->
+                            <ImageView
+                                android:id="@+id/btnZipModeToggleQueue"
+                                android:layout_width="32dp"
+                                android:layout_height="32dp"
+                                android:layout_marginEnd="8dp"
+                                android:padding="6dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_zip_mode"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Send as ZIP" />
+
+                            <!-- Pass-25 (#5.4): switch to the Connected Devices
+                                 view. Quiet secondary tint so the row's
+                                 hierarchy stays: label → switch → actions. -->
+                            <ImageView
+                                android:id="@+id/btnSwitchCardView"
+                                android:layout_width="32dp"
+                                android:layout_height="32dp"
+                                android:layout_marginEnd="8dp"
+                                android:padding="6dp"
+                                android:scaleType="fitCenter"
+                                android:src="@drawable/ic_view_switch"
+                                android:tint="@color/text_secondary"
+                                android:background="@drawable/bg_icon_ripple"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Switch to Connected Devices" />
+
+                            <Button
+                                android:id="@+id/btnSendShare"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minHeight="0dp"
+                                android:text="Send"
+                                android:drawableStart="@drawable/ic_arrow_up"
+                                android:drawablePadding="4dp"
+                                android:textSize="12sp"
+                                android:textColor="@android:color/white"
+                                android:background="@drawable/bg_btn_primary"
+                                android:textAllCaps="false"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:paddingTop="8dp"
+                                android:paddingBottom="8dp"
+                                android:layout_marginEnd="8dp" />
+
+                            <Button
+                                android:id="@+id/btnClearShare"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minHeight="0dp"
+                                android:text="Clear"
+                                android:drawableStart="@drawable/ic_close"
+                                android:drawablePadding="4dp"
+                                android:textSize="12sp"
+                                android:textColor="@color/red_stop"
+                                android:background="@drawable/bg_btn_ghost"
+                                android:textAllCaps="false"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:paddingTop="8dp"
+                                android:paddingBottom="8dp" />
+                        </LinearLayout>
+
+                        <!-- File chips via RecyclerView (Adapter in SendFragment.kt),
+                             not a plain ScrollView — a plain ScrollView nested
+                             inside another scrolling container doesn't correctly
+                             negotiate touch/scroll priority (the outer container
+                             wins every drag), which is what used to make this
+                             area scroll the whole page instead of just its own
+                             chips. nestedScrollingEnabled=false keeps it a
+                             self-contained scroll island (see the send flow
+                             comments preserved from the old card), and the
+                             in-progress drag guard lives in SendFragment. -->
+                        <!-- Pass-8 follow-up (consistent scroll fades): the
+                             queue list keeps the EXACT geometry it always had
+                             before Pass-27 — the wrapper clips its children
+                             (clipChildren restored to the default), and the
+                             RecyclerView carries only the MINIMAL bottom
+                             padding the pill's presence requires (see the pill
+                             note below). Pass-28 (#2.1): the -10dp bottom
+                             margin is the original that puts the bottom fade
+                             flush to the card's bottom padding — unchanged. -->
+                        <FrameLayout
+                            android:id="@+id/previewListWrap"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:layout_marginBottom="-10dp">
+
+                            <!-- Pass-28 (#2.1): paddingBottom 28dp → 14dp. The
+                                 pill that lives in the card's bottom frame is
+                                 12dp tall with its top edge 12dp above the
+                                 wrap's own bottom; 14dp of scrollable-padding
+                                 clearance keeps the LAST chip row fully clear of
+                                 the pill at rest (never overlapped) while the
+                                 list still glides under the bottom fade exactly
+                                 as it always did — the oversized 28dp offset
+                                 Pass-27 shipped (which pushed the end-of-list
+                                 rest position visibly high and read as cropped
+                                 content) is gone. -->
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/previewList"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:clipToPadding="false"
+                                android:paddingBottom="14dp"
+                                android:overScrollMode="always"
+                                android:nestedScrollingEnabled="false" />
+
+                            <!-- Card-colored scroll-edge fades (same drawables,
+                                 same only-when-scrollable visibility rule —
+                                 driven from updateQueueEdgeFades), painted over
+                                 the rows. -->
+                            <View
+                                android:id="@+id/queueFadeTop"
+                                android:layout_width="match_parent"
+                                android:layout_height="@dimen/edge_fade_size"
+                                android:layout_gravity="top"
+                                android:background="@drawable/bg_fade_top"
+                                android:visibility="gone" />
+
+                            <View
+                                android:id="@+id/queueFadeBottom"
+                                android:layout_width="match_parent"
+                                android:layout_height="@dimen/edge_fade_size"
+                                android:layout_gravity="bottom"
+                                android:background="@drawable/bg_fade_bottom"
+                                android:visibility="gone" />
+
+                        </FrameLayout>
+
+                        <!-- ── Pass-30 (#2) → Pass-32 (#6): the count + size ──
+                             pill used to be mounted here — a zero-contribution
+                             anchor at queueView's bottom edge with the pill
+                             hung 13dp below it on a negative margin, into the
+                             card's 14dp bottom-padding rim. Pass-32 moved the
+                             whole anchor INTO that rim as a real in-bounds
+                             slot at the card's inner LinearLayout level (see
+                             the anchor's own comment below): same on-screen
+                             position, but nothing renders outside any parent's
+                             bounds anymore, so no renderer's clipping can
+                             crop the pill's bottom edge. fitQueueCounterPill
+                             still guarantees the COMPLETE figure is visible
+                             (stepping the text size down only when an
+                             unusually long figure would overflow — never an
+                             ellipsis, never truncated). -->
+                    </LinearLayout> <!-- /queueView — Pass-25 (#5) -->
+
+                    <!-- ══ Pass-32 (#6): the counter pill's anchor, moved INTO ══
+                         the card's rim — a real 14dp-tall slot as the last child
+                         of the card's padded inner LinearLayout, with a −14dp
+                         top margin so the two weighted faces keep EXACTLY the
+                         space they always had (the anchor contributes a net 0
+                         to the column's length and lands over the card's own
+                         bottom-padding rim). The pill inside spans the rim's
+                         [1dp .. 13dp] band — the IDENTICAL on-screen position
+                         Pass 30 specified and Pass 31 kept — but now every
+                         view in the chain renders INSIDE its parent's bounds:
+                         the old design hung the pill 13dp below a 0-height
+                         anchor and below queueView's own bottom edge, relying
+                         on lenient clipping through two ancestors (the inner
+                         LinearLayout clips by default), which is exactly what
+                         cropped the pill's bottom edge on some renderers. The
+                         Pass-31 stacking lift (translationZ=2dp, no shadow —
+                         the anchor has no background) moves with it unchanged,
+                         and setSharedCardView keeps toggling the anchor with
+                         the queue face exactly as before. The pill stays
+                         non-interactive: taps on it fall through to the list
+                         wrap behind it, which owns that rim band. -->
+                    <FrameLayout
+                        android:id="@+id/queuePillAnchor"
+                        android:layout_width="match_parent"
+                        android:layout_height="14dp"
+                        android:layout_marginTop="-14dp"
+                        android:translationZ="2dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tvPreviewTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="12dp"
+                            android:layout_gravity="bottom|center_horizontal"
+                            android:layout_marginBottom="1dp"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="Queue"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="9.5sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:background="@drawable/bg_queue_count_pill"
+                            android:paddingStart="9dp"
+                            android:paddingEnd="9dp"
+                            android:maxLines="1" />
+
+                    </FrameLayout>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+
+</LinearLayout>
+</androidx.core.widget.NestedScrollView>

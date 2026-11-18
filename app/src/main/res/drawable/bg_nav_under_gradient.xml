@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══ Pass-19/20: the smooth, continuous, bottom-anchored fade ══
+     FALLBACK ONLY — MainActivity.applyNavUnderGradient() replaces this
+     drawable at runtime with a CODE-built 9-stop gradient whose alphas
+     follow an ease-in curve over the now-taller band (see that function
+     for the curve). The band is 88dp — the bar's full footprint
+     (52dp bar + 12dp bottom margin = 64dp) PLUS ~24dp of visible,
+     gently-darkening fade above the bar (the Pass-20 "increase the
+     gradient's height/range by a small amount"), all anchored to the
+     screen's bottom edge BEHIND the bar. angle="90" = startColor at the
+     TOP of the band, endColor at the BOTTOM — bottom-anchored
+     orientation. Colors stay the app's own bg_deep family, darker end
+     stops than Pass-19; dither=true is banding insurance on the
+     unpremultiplied Android 5 render path. Do NOT reintroduce
+     centerX/centerY here: they do nothing for linear gradients. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle"
+    android:dither="true">
+    <gradient
+        android:angle="90"
+        android:startColor="#00191B21"
+        android:centerColor="#12191B21"
+        android:endColor="#F7191B21"
+        android:type="linear"/>
+</shape>
