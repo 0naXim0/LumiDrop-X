@@ -23,7 +23,7 @@ The screenshots below show the main product flows in the same order as the app e
 
 <p align="center">
   <img src="screenshots/overview/hero.png" alt="LumiDrop X home screen with a local session and nearby devices" width="32%" />
-  <img src="screenshots/overview/connected-device-bottom.png" alt="LumiDrop X quick send screen with selected files" width="32%" />
+ <img src="screenshots/overview/no-device.png" alt="LumiDrop X desktop web client with storage categories" width="32%" />
   <img src="screenshots/overview/transfer-two-devices.png" alt="LumiDrop X Android and mobile web client connected together" width="32%" />
 </p>
 
@@ -34,7 +34,7 @@ The screenshots below show the main product flows in the same order as the app e
 <p align="center">
   <img src="screenshots/overview/connected-device-top.png" alt="LumiDrop X file picker showing folders and storage" width="32%" />
   <img src="screenshots/overview/transfer-device-bottom.png" alt="LumiDrop X Transfers tab showing received files" width="32%" />
-  <img src="screenshots/overview/no-device.png" alt="LumiDrop X desktop web client with storage categories" width="32%" />
+<img src="screenshots/overview/connected-device-bottom.png" alt="LumiDrop X quick send screen with selected files" width="32%" />
 </p>
 
 <p align="center"><sub>File picker · Transfers tab · Desktop web client</sub></p>
