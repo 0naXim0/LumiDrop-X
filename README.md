@@ -1,5 +1,9 @@
 # LumiDrop X
 
+<p align="center"><img src="assets/lumidrop-x-banner.png" alt="LumiDrop X — local file sharing" width="100%" /></p>
+
+<p align="center"><img src="assets/lumidrop-x-icon.png" alt="LumiDrop X app icon" width="96" /></p>
+
 LumiDrop X is an Android app for sharing files and text between nearby devices on the same local network.
 
 [![Android API 21+](https://img.shields.io/badge/Android-API%2021%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/about/versions/lollipop)
@@ -78,7 +82,7 @@ For release builds, create an untracked `keystore.properties` from `keystore.pro
 
 ## License
 
-No license was supplied with the project. All rights remain with the original copyright holder unless a license is added by the owner.
+LumiDrop X is released under the [MIT License](LICENSE). You may use, modify, and redistribute the source in accordance with its terms.
 
 ## Author
 
