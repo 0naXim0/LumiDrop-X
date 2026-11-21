@@ -1,8 +1,14 @@
 package com.lumidrop.x.settings
 
 import android.content.Intent
+import android.app.DownloadManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Environment
+import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -15,6 +21,9 @@ import com.lumidrop.x.R
 import com.lumidrop.x.ui.Widgets
 import com.lumidrop.x.ui.dp
 import com.lumidrop.x.ui.dpf
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * The "Settings" tab -- ported from SettingsActivity as part of Phase 17's
@@ -51,6 +60,15 @@ import com.lumidrop.x.ui.dpf
  * modern settings page: dense, quiet, nothing to read past.
  */
 class SettingsFragment : Fragment() {
+
+    private companion object {
+        const val RELEASE_API = "https://api.github.com/repos/0naXim0/LumiDrop-X/releases/latest"
+        const val APK_URL = "https://github.com/0naXim0/LumiDrop-X/releases/latest/download/LumiDrop-X-v1.0.0-universal.apk"
+        const val UPDATE_PREFS = "lumidrop_updates"
+        const val UPDATE_VERSION = "available_version"
+        const val UPDATE_APK_URL = "available_apk_url"
+        const val UPDATE_DOWNLOAD_ID = "download_id"
+    }
 
     // ── Pass-38 (#7): this tab's compact music-pill dock (built in
     // onCreateView's header row, registered with MusicPlayback while this
@@ -122,11 +140,120 @@ class SettingsFragment : Fragment() {
     // happens to compare clean because computeChanges() reads the live
     // preferences; with the guard, the evaluation simply never runs).
     private var syncingFromPrefs = false
+    private var updateStatusText: TextView? = null
+    private var checkUpdateButton: TextView? = null
+    private var downloadUpdateButton: TextView? = null
     // Reliability pass §3: the Concurrent Receiving / Concurrent Sending
     // steppers are REMOVED — transfer concurrency is fixed in the engine
     // (GOAT-PASS 2: exactly ONE per direction, by explicit specification —
     // see TransferManager's TRANSFER_CONCURRENCY doc), never a user setting.
     // No field, no value, no save/discard/restart plumbing for them remains.
+
+    private fun installedVersion(): String = try {
+        requireContext().packageManager.getPackageInfo(requireContext().packageName, 0).versionName ?: "0.0.0"
+    } catch (_: Exception) { "0.0.0" }
+
+    private fun versionParts(value: String): List<Int> = value.trim().removePrefix("v")
+        .split(".", "-", "+").take(3).map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }
+        .let { it + List(3 - it.size) { 0 } }
+
+    private fun isNewer(remote: String, local: String): Boolean =
+        versionParts(remote).zip(versionParts(local)).firstOrNull { it.first != it.second }
+            ?.let { it.first > it.second } ?: false
+
+    private fun updatePrefs() = requireContext().getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+
+    private fun refreshDownloadedState(): Boolean {
+        val id = updatePrefs().getLong(UPDATE_DOWNLOAD_ID, -1L)
+        if (id < 0L) return false
+        val query = (requireContext().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
+            .query(DownloadManager.Query().setFilterById(id))
+        query.use {
+            if (!it.moveToFirst()) return false
+            val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                updatePrefs().edit().remove(UPDATE_DOWNLOAD_ID).remove(UPDATE_VERSION).remove(UPDATE_APK_URL).apply()
+                return true
+            }
+            if (status == DownloadManager.STATUS_FAILED) updatePrefs().edit().remove(UPDATE_DOWNLOAD_ID).apply()
+        }
+        return false
+    }
+
+    private fun renderUpdateState() {
+        if (!isAdded) return
+        val prefs = updatePrefs()
+        val available = prefs.getString(UPDATE_VERSION, null)
+        val pendingId = prefs.getLong(UPDATE_DOWNLOAD_ID, -1L)
+        if (available != null && isNewer(available, installedVersion())) {
+            updateStatusText?.text = if (pendingId >= 0L) "Downloading v$available…" else "Update available: v$available"
+            downloadUpdateButton?.visibility = View.VISIBLE
+            downloadUpdateButton?.text = if (pendingId >= 0L) "Downloading…" else "Download Latest Version"
+        } else {
+            updateStatusText?.text = "You’re running the latest version."
+            downloadUpdateButton?.visibility = View.GONE
+        }
+    }
+
+    private fun checkForUpdates() {
+        checkUpdateButton?.isEnabled = false
+        updateStatusText?.text = "Checking GitHub for updates…"
+        Thread {
+            var remoteVersion: String? = null
+            var apkUrl = APK_URL
+            try {
+                val connection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 7000
+                    readTimeout = 7000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "LumiDrop-X-Android")
+                }
+                if (connection.responseCode in 200..299) {
+                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    val release = JSONObject(body)
+                    remoteVersion = release.optString("tag_name").removePrefix("v").takeIf { it.isNotBlank() }
+                    release.optJSONArray("assets")?.let { assets ->
+                        for (i in 0 until assets.length()) {
+                            val asset = assets.optJSONObject(i) ?: continue
+                            if (asset.optString("name").endsWith(".apk", true)) {
+                                apkUrl = asset.optString("browser_download_url", apkUrl); break
+                            }
+                        }
+                    }
+                }
+                connection.disconnect()
+            } catch (_: Exception) { /* Offline or GitHub unavailable. */ }
+            Handler(Looper.getMainLooper()).post {
+                checkUpdateButton?.isEnabled = true
+                if (remoteVersion != null && isNewer(remoteVersion!!, installedVersion())) {
+                    updatePrefs().edit().putString(UPDATE_VERSION, remoteVersion).putString(UPDATE_APK_URL, apkUrl).apply()
+                    updateStatusText?.text = "Update available: v$remoteVersion"
+                } else if (remoteVersion != null) {
+                    updateStatusText?.text = "You’re running the latest version."
+                } else {
+                    updateStatusText?.text = "Couldn’t check right now. Try again later."
+                }
+                renderUpdateState()
+            }
+        }.start()
+    }
+
+    private fun downloadLatestVersion() {
+        val prefs = updatePrefs()
+        val version = prefs.getString(UPDATE_VERSION, null) ?: return
+        val url = prefs.getString(UPDATE_APK_URL, APK_URL) ?: APK_URL
+        if (refreshDownloadedState()) { renderUpdateState(); return }
+        val request = DownloadManager.Request(Uri.parse(url)).apply {
+            setTitle("LumiDrop X v$version")
+            setDescription("Downloading the latest LumiDrop X APK")
+            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LumiDrop-X-v$version.apk")
+        }
+        val id = (requireContext().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+        prefs.edit().putLong(UPDATE_DOWNLOAD_ID, id).apply()
+        renderUpdateState()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val ctx = requireContext()
@@ -665,6 +792,39 @@ class SettingsFragment : Fragment() {
         }
         creditsCard.addView(aboutLinkRow(R.drawable.ic_globe, "Website", "https://naxim-labs.netlify.app", 12))
         creditsCard.addView(aboutLinkRow(R.drawable.ic_link, "GitHub", "https://github.com/0naXim0", 6))
+
+        // Update controls live in About so the app can check the canonical
+        // GitHub release without adding a second settings destination. The
+        // download action is backed by DownloadManager and remains visible
+        // until that manager reports a completed APK download.
+        updateStatusText = TextView(ctx).apply {
+            text = "Check GitHub for the latest version."
+            textSize = 11.5f; setTextColor(col(R.color.text_muted)); gravity = Gravity.CENTER
+            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(16) }
+        }
+        creditsCard.addView(updateStatusText)
+        checkUpdateButton = TextView(ctx).apply {
+            text = "Check for update"; textSize = 13f; setTextColor(col(R.color.text_primary))
+            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
+            background = Widgets.rippleRect(ctx, col(R.color.bg_secondary), radiusDp = 10,
+                strokeColor = col(R.color.border_subtle))
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(10) }
+            setOnClickListener { checkForUpdates() }
+        }
+        creditsCard.addView(checkUpdateButton)
+        downloadUpdateButton = TextView(ctx).apply {
+            text = "Download Latest Version"; textSize = 13f; setTextColor(android.graphics.Color.WHITE)
+            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_btn_primary)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(8) }
+            setOnClickListener { downloadLatestVersion() }
+            visibility = View.GONE
+        }
+        creditsCard.addView(downloadUpdateButton)
+        refreshDownloadedState()
+        renderUpdateState()
         root.addView(creditsCard)
 
         scroll.addView(root)
