@@ -18,10 +18,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
       - name: Unit tests
         run: ./gradlew --no-daemon test
       - name: Assemble unsigned debug APK
         run: ./gradlew --no-daemon assembleDebug
+      - name: Prepare release APK artifact
+        run: cp app/build/outputs/apk/debug/app-debug.apk LumiDrop-X-v1.0.1-universal.apk
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumiDrop-X-v1.0.1
+          path: LumiDrop-X-v1.0.1-universal.apk
+          if-no-files-found: error

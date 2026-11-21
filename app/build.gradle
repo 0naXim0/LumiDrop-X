@@ -464,8 +464,8 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 89
-        versionName "1.0.0"
+        versionCode 90
+        versionName "1.0.1"
         // ── GOAT-PASS 17 (versionCode 89 — incoming-transfer acceptance ──
         // reliability): the intermittent "Accept does nothing" is fixed at
         // its identity root — the announce placeholder used to key its item
