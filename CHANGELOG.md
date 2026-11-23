@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 (version code 93)
+
+- Refined Settings → About → Updates with a compact, purple-themed layout.
+- Replaced the large auto-check switch with an accessible enabled/disabled pill.
+- Preserved update checking, download, verification, persistence, and installation behavior.
+
 ## 1.0.2 (version code 92)
 
 - Hardened the in-app update center with version-code-aware release selection.

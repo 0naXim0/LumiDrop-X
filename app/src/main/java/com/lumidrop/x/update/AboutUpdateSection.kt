@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.widget.SwitchCompat
 import com.lumidrop.x.R
 import com.lumidrop.x.ui.Widgets
 import com.lumidrop.x.ui.dpf
@@ -37,20 +36,11 @@ import com.lumidrop.x.update.UpdateManager.State
  * the mark-only foreground drawable draws on top at the launcher's own
  * proportions — no mipmap canvas, no extra padding, no distortion, no crop.
  *
- * Palette (§6.3 direction): deep #0F172A / surface #1E293B / accent #3B82F6 /
- * luminous #60A5FA / near-white #F8FAFC — applied ONLY as the hero accents
- * (icon tile backing, release-card surface, link + progress tints, primary
- * button); every other surface stays bound to the app's themed resources so
- * dark AND light themes both remain correct. The direction's "#60FAFA" is
- * not a valid material tone in this blue family and reads as a typo for
- * #60A5FA (blue-400); the blue family is used, noted here honestly.
+ * Palette: all update controls bind to the app's themed purple/dark resources
+ * so the section stays visually consistent with the rest of Settings in both
+ * dark and light themes.
  */
 object AboutUpdateSection {
-
-    private const val C_SURFACE = 0xFF1E293B.toInt()
-    private const val C_ACCENT = 0xFF3B82F6.toInt()
-    private const val C_LUMEN = 0xFF60A5FA.toInt()
-    private const val C_NEARWHITE = 0xFFF8FAFC.toInt()
 
     fun build(
         ctx: Context,
@@ -77,7 +67,7 @@ object AboutUpdateSection {
         private lateinit var statusLine: TextView
         private lateinit var lastCheckedLine: TextView
         private lateinit var latestLine: TextView
-        private lateinit var autoSwitch: SwitchCompat
+        private lateinit var autoPill: TextView
         private lateinit var actionBtn: TextView
         private lateinit var secondaryBtn: TextView
         private lateinit var progressBar: ProgressBar
@@ -172,16 +162,48 @@ object AboutUpdateSection {
             hairline()
 
             // ══ Update group ══════════════════════════════════════════════
-            card.addView(groupLabel("Updates"))
+            val updatesHeader = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            updatesHeader.addView(groupLabel("Updates").apply {
+                layoutParams = LinearLayout.LayoutParams(0,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            autoPill = TextView(ctx).apply {
+                textSize = 11f
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                setPadding(dp(11), dp(6), dp(11), dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+                setOnClickListener {
+                    val enabled = !ReleaseModel.prefs(ctx)
+                        .getBoolean("auto_check_enabled", true)
+                    ReleaseModel.prefs(ctx).edit()
+                        .putBoolean("auto_check_enabled", enabled).apply()
+                    updateAutoPill(enabled)
+                    if (enabled) onCheckNow(true)
+                }
+            }
+            updateAutoPill(ReleaseModel.prefs(ctx)
+                .getBoolean("auto_check_enabled", true))
+            updatesHeader.addView(autoPill)
+            card.addView(updatesHeader)
             statusLine = TextView(ctx).apply {
                 textSize = 12.5f; setTextColor(col(R.color.text_secondary)); setLineSpacing(dp2f(), 1f)
                 layoutParams = LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT).also { it.topMargin = dp(6) }
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT).also { it.topMargin = dp(10) }
             }
             card.addView(statusLine)
             latestLine = TextView(ctx).apply {
-                textSize = 11.5f; setTextColor(C_LUMEN); visibility = View.GONE
+                textSize = 11.5f; setTextColor(col(R.color.accent_light)); visibility = View.GONE
             }
             card.addView(latestLine)
             lastCheckedLine = TextView(ctx).apply {
@@ -193,17 +215,6 @@ object AboutUpdateSection {
             card.addView(lastCheckedLine)
 
             val ctlRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            autoSwitch = SwitchCompat(ctx).apply {
-                text = "Auto Check for Updates"
-                textSize = 13f; setTextColor(col(R.color.text_secondary))
-                layoutParams = LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                isChecked = ReleaseModel.prefs(ctx).getBoolean("auto_check_enabled", true)
-                setOnCheckedChangeListener { _, checked ->
-                    ReleaseModel.prefs(ctx).edit().putBoolean("auto_check_enabled", checked).apply()
-                    if (checked) onCheckNow(true)
-                }
-            }
-            ctlRow.addView(autoSwitch)
             actionBtn = pill("Check for Updates", filled = true) { onPrimary() }
             ctlRow.addView(actionBtn)
             card.addView(ctlRow)
@@ -217,14 +228,15 @@ object AboutUpdateSection {
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                     android.view.ViewGroup.LayoutParams.WRAP_CONTENT).also { it.topMargin = dp(12) }
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = ctx.dpf(14f); setColor(C_SURFACE)
+                    cornerRadius = ctx.dpf(14f); setColor(col(R.color.bg_card))
                 }
             }
             card.addView(releaseBody)
 
             progressBar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
                 isIndeterminate = false; max = 100; progress = 0
-                visibility = View.GONE; progressTintList = android.content.res.ColorStateList.valueOf(C_ACCENT)
+                visibility = View.GONE
+                progressTintList = android.content.res.ColorStateList.valueOf(col(R.color.accent))
                 layoutParams = LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).also { it.topMargin = dp(12) }
             }
@@ -259,8 +271,27 @@ object AboutUpdateSection {
             typeface = android.graphics.Typeface.DEFAULT_BOLD; letterSpacing = 0.1f
         }
 
+        private fun updateAutoPill(enabled: Boolean) {
+            if (!::autoPill.isInitialized) return
+            autoPill.text = if (enabled) "Auto on" else "Auto off"
+            autoPill.setTextColor(if (enabled) col(R.color.text_primary) else col(R.color.text_secondary))
+            autoPill.contentDescription = if (enabled)
+                "Automatic update checks enabled. Tap to disable."
+            else "Automatic update checks disabled. Tap to enable."
+            autoPill.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = ctx.dpf(20f)
+                if (enabled) {
+                    setColor(col(R.color.accent_dark))
+                    setStroke(dp(1), col(R.color.accent))
+                } else {
+                    setColor(col(R.color.bg_secondary))
+                    setStroke(dp(1), col(R.color.border_subtle))
+                }
+            }
+        }
+
         private fun linkRow(label: String, url: String): TextView = TextView(ctx).apply {
-            text = label; textSize = 12.5f; setTextColor(C_LUMEN)
+            text = label; textSize = 12.5f; setTextColor(col(R.color.accent_light))
             isClickable = true
             setPadding(0, dp(6), 0, dp(6))
             setOnClickListener {
@@ -276,10 +307,10 @@ object AboutUpdateSection {
             text = label; textSize = 12.5f; gravity = Gravity.CENTER
             isClickable = true; isFocusable = true
             setPadding(dp(16), dp(10), dp(16), dp(10))
-            if (filled) setTextColor(C_NEARWHITE)
+            if (filled) setTextColor(col(R.color.text_primary))
             background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = ctx.dpf(12f)
-                if (filled) setColor(C_ACCENT)
+                if (filled) setColor(col(R.color.accent))
                 else { setColor(col(R.color.bg_secondary)); setStroke(dp(1), col(R.color.border_subtle)) }
             }
             setOnClickListener { onClick() }
@@ -348,7 +379,7 @@ object AboutUpdateSection {
                 releaseBody.removeAllViews()
                 releaseBody.addView(TextView(ctx).apply {
                     text = "Version ${rel.version}"
-                    textSize = 14f; setTextColor(C_NEARWHITE)
+                    textSize = 14f; setTextColor(col(R.color.text_primary))
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                 })
                 if (rel.apkSizeBytes > 0) releaseBody.addView(TextView(ctx).apply {

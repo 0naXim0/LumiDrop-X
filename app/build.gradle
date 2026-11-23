@@ -467,8 +467,8 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 92
-        versionName "1.0.2"
+        versionCode 93
+        versionName "1.0.3"
         // ── PRODUCTION FINAL PASS 20 (versionCode 92 — versionName 1.0.2): ══
         // Pass-19 independent audit + fixes. §2 text-transfer badges: an
         // accepted incoming text no longer increments the Received badge
