@@ -36,7 +36,48 @@ object ThumbnailShared {
     //  2. Apply a final bilinear createScaledBitmap to the exact target size.
     // A naive single-pass divide-by-maxSz produces over-downsampled, blocky
     // thumbnails (especially at 80-120px).
-    fun decodeScaled(path: String, maxSz: Int): Bitmap? {
+    // ── PASS 19 (§4.3 — the system's own thumbnail store, first) ──────────
+    // MediaStore maintains ready-made thumbnails for every image it has
+    // scanned — the Gallery's own micro (96px) and mini (512px) kinds. For
+    // a web tile (40–256px) that entry is a few-millisecond read versus the
+    // bounds+inSampleSize decode of the ORIGINAL (hundreds of ms and tens
+    // of MB of transient bitmap for a 48MP photo). Resolution by path
+    // needs no extra permissions (it is the documented legacy API). Used
+    // ONLY when the requested size fits what the store offers; everything
+    // else takes the existing path unchanged.
+    fun mediaStoreImageThumb(context: Context, path: String, maxSz: Int): Bitmap? {
+        if (maxSz > 512) return null
+        return try {
+            val id = try {
+                val cr = context.contentResolver
+                val c = cr.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Images.Media._ID),
+                    MediaStore.Images.Media.DATA + "=?",
+                    arrayOf(path), null)
+                c?.use { if (it.moveToFirst()) it.getLong(0) else null } ?: return null
+            } catch (e: Exception) { return null } ?: return null
+            @Suppress("DEPRECATION")
+            val kind = if (maxSz <= 96) MediaStore.Images.Thumbnails.MICRO_KIND
+                       else MediaStore.Images.Thumbnails.MINI_KIND
+            @Suppress("DEPRECATION")
+            MediaStore.Images.Thumbnails.getThumbnail(context.contentResolver, id, kind, null)
+        } catch (e: Exception) { null }
+    }
+
+    fun decodeScaled(path: String, maxSz: Int, context: Context? = null): Bitmap? {
+        // ── PASS 19 (§4.3): the system thumbnail store first — see
+        // mediaStoreImageThumb's note. Only a miss (unscanned file, no
+        // context available, or a request larger than the store's kinds)
+        // falls through to the original-file decode path, unchanged.
+        if (context != null) mediaStoreImageThumb(context, path, maxSz)?.let { sys ->
+            // The store's entry may be smaller than the tile wants — only
+            // use it when it is close enough to the request that upscaling
+            // would not look soft (>= 60% of the target on the long edge).
+            val long = maxOf(sys.width, sys.height)
+            if (long * 100 >= maxSz * 60) return sys
+            sys.recycle()
+        }
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, opts)
         // Phase 5 (§5.7): a failed bounds decode (outWidth/outHeight stay

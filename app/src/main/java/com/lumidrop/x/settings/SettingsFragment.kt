@@ -1,14 +1,8 @@
 package com.lumidrop.x.settings
 
 import android.content.Intent
-import android.app.DownloadManager
-import android.content.Context
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.Environment
-import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -21,9 +15,6 @@ import com.lumidrop.x.R
 import com.lumidrop.x.ui.Widgets
 import com.lumidrop.x.ui.dp
 import com.lumidrop.x.ui.dpf
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * The "Settings" tab -- ported from SettingsActivity as part of Phase 17's
@@ -60,15 +51,12 @@ import java.net.URL
  * modern settings page: dense, quiet, nothing to read past.
  */
 class SettingsFragment : Fragment() {
-
-    private companion object {
-        const val RELEASE_API = "https://api.github.com/repos/0naXim0/LumiDrop-X/releases/latest"
-        const val APK_URL = "https://github.com/0naXim0/LumiDrop-X/releases/latest/download/LumiDrop-X-v1.0.0-universal.apk"
-        const val UPDATE_PREFS = "lumidrop_updates"
-        const val UPDATE_VERSION = "available_version"
-        const val UPDATE_APK_URL = "available_apk_url"
-        const val UPDATE_DOWNLOAD_ID = "download_id"
-    }
+    // ── PASS 19 (§5/§6): the About + Updates section — a field so the
+    //  fragment's own lifecycle can drive it (auto-check pacing on resume,
+    //  post-install reconciliation, re-render after check/download).
+    private var aboutSection: com.lumidrop.x.update.AboutUpdateSection.Section? = null
+    // §6.5: the download-cancel flag — consulted per chunk by UpdateManager.
+    private val cancelRequested = java.util.concurrent.atomic.AtomicBoolean(false)
 
     // ── Pass-38 (#7): this tab's compact music-pill dock (built in
     // onCreateView's header row, registered with MusicPlayback while this
@@ -140,120 +128,11 @@ class SettingsFragment : Fragment() {
     // happens to compare clean because computeChanges() reads the live
     // preferences; with the guard, the evaluation simply never runs).
     private var syncingFromPrefs = false
-    private var updateStatusText: TextView? = null
-    private var checkUpdateButton: TextView? = null
-    private var downloadUpdateButton: TextView? = null
     // Reliability pass §3: the Concurrent Receiving / Concurrent Sending
     // steppers are REMOVED — transfer concurrency is fixed in the engine
     // (GOAT-PASS 2: exactly ONE per direction, by explicit specification —
     // see TransferManager's TRANSFER_CONCURRENCY doc), never a user setting.
     // No field, no value, no save/discard/restart plumbing for them remains.
-
-    private fun installedVersion(): String = try {
-        requireContext().packageManager.getPackageInfo(requireContext().packageName, 0).versionName ?: "0.0.0"
-    } catch (_: Exception) { "0.0.0" }
-
-    private fun versionParts(value: String): List<Int> = value.trim().removePrefix("v")
-        .split(".", "-", "+").take(3).map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }
-        .let { it + List(3 - it.size) { 0 } }
-
-    private fun isNewer(remote: String, local: String): Boolean =
-        versionParts(remote).zip(versionParts(local)).firstOrNull { it.first != it.second }
-            ?.let { it.first > it.second } ?: false
-
-    private fun updatePrefs() = requireContext().getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
-
-    private fun refreshDownloadedState(): Boolean {
-        val id = updatePrefs().getLong(UPDATE_DOWNLOAD_ID, -1L)
-        if (id < 0L) return false
-        val query = (requireContext().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
-            .query(DownloadManager.Query().setFilterById(id))
-        query.use {
-            if (!it.moveToFirst()) return false
-            val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-            if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                updatePrefs().edit().remove(UPDATE_DOWNLOAD_ID).remove(UPDATE_VERSION).remove(UPDATE_APK_URL).apply()
-                return true
-            }
-            if (status == DownloadManager.STATUS_FAILED) updatePrefs().edit().remove(UPDATE_DOWNLOAD_ID).apply()
-        }
-        return false
-    }
-
-    private fun renderUpdateState() {
-        if (!isAdded) return
-        val prefs = updatePrefs()
-        val available = prefs.getString(UPDATE_VERSION, null)
-        val pendingId = prefs.getLong(UPDATE_DOWNLOAD_ID, -1L)
-        if (available != null && isNewer(available, installedVersion())) {
-            updateStatusText?.text = if (pendingId >= 0L) "Downloading v$available…" else "Update available: v$available"
-            downloadUpdateButton?.visibility = View.VISIBLE
-            downloadUpdateButton?.text = if (pendingId >= 0L) "Downloading…" else "Download Latest Version"
-        } else {
-            updateStatusText?.text = "You’re running the latest version."
-            downloadUpdateButton?.visibility = View.GONE
-        }
-    }
-
-    private fun checkForUpdates() {
-        checkUpdateButton?.isEnabled = false
-        updateStatusText?.text = "Checking GitHub for updates…"
-        Thread {
-            var remoteVersion: String? = null
-            var apkUrl = APK_URL
-            try {
-                val connection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 7000
-                    readTimeout = 7000
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("User-Agent", "LumiDrop-X-Android")
-                }
-                if (connection.responseCode in 200..299) {
-                    val body = connection.inputStream.bufferedReader().use { it.readText() }
-                    val release = JSONObject(body)
-                    remoteVersion = release.optString("tag_name").removePrefix("v").takeIf { it.isNotBlank() }
-                    release.optJSONArray("assets")?.let { assets ->
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.optJSONObject(i) ?: continue
-                            if (asset.optString("name").endsWith(".apk", true)) {
-                                apkUrl = asset.optString("browser_download_url", apkUrl); break
-                            }
-                        }
-                    }
-                }
-                connection.disconnect()
-            } catch (_: Exception) { /* Offline or GitHub unavailable. */ }
-            Handler(Looper.getMainLooper()).post {
-                checkUpdateButton?.isEnabled = true
-                if (remoteVersion != null && isNewer(remoteVersion!!, installedVersion())) {
-                    updatePrefs().edit().putString(UPDATE_VERSION, remoteVersion).putString(UPDATE_APK_URL, apkUrl).apply()
-                    updateStatusText?.text = "Update available: v$remoteVersion"
-                } else if (remoteVersion != null) {
-                    updateStatusText?.text = "You’re running the latest version."
-                } else {
-                    updateStatusText?.text = "Couldn’t check right now. Try again later."
-                }
-                renderUpdateState()
-            }
-        }.start()
-    }
-
-    private fun downloadLatestVersion() {
-        val prefs = updatePrefs()
-        val version = prefs.getString(UPDATE_VERSION, null) ?: return
-        val url = prefs.getString(UPDATE_APK_URL, APK_URL) ?: APK_URL
-        if (refreshDownloadedState()) { renderUpdateState(); return }
-        val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("LumiDrop X v$version")
-            setDescription("Downloading the latest LumiDrop X APK")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LumiDrop-X-v$version.apk")
-        }
-        val id = (requireContext().getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-        prefs.edit().putLong(UPDATE_DOWNLOAD_ID, id).apply()
-        renderUpdateState()
-    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val ctx = requireContext()
@@ -672,160 +551,59 @@ class SettingsFragment : Fragment() {
         root.addView(descText("Server port, password, and connection approval live in Web Client Settings."))
         root.addView(spacer(24))
 
-        // Credits / About — v1.0 redesign: an elegant, modern identity block.
-        // A real app-icon presentation (56dp rounded logo tile), the name as
-        // a proper display heading, the version in its own quiet chip, a
-        // one-line tagline, then the creator + links on designed rows. The
-        // old block crammed logo/name/version onto one dense line that read
-        // as an afterthought; this reads as a product.
-        val creditsCard = Widgets.sectionCard(ctx, paddingDp = 18)
-        creditsCard.gravity = Gravity.CENTER
-        // Hero logo: accent-tinted rounded tile holding the bolt — the same
-        // "app icon in a rounded square" presentation every modern app's
-        // About screen uses.
-        creditsCard.addView(android.widget.FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56)).also {
-                it.gravity = Gravity.CENTER_HORIZONTAL; it.topMargin = dp(6); it.bottomMargin = dp(10)
-            }
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = ctx.dpf(14f)
-                setColor((col(R.color.accent) and 0x00FFFFFF) or 0x2E000000)   // ~18% accent tint
-                setStroke(dp(1), (col(R.color.accent_light) and 0x00FFFFFF) or 0x4D000000)
-            }
-            addView(ImageView(ctx).apply {
-                setImageDrawable(Widgets.icon(ctx, R.drawable.ic_logo_bolt, col(R.color.accent_light)))
-                val pad = dp(14)
-                setPadding(pad, pad, pad, pad)
-                layoutParams = android.widget.FrameLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT)
-            })
-        })
-        creditsCard.addView(TextView(ctx).apply {
-            text = "LumiDrop X"
-            textSize = 18f; setTextColor(col(R.color.text_primary))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            letterSpacing = 0.01f
-            gravity = Gravity.CENTER
-            layoutParams = lp(MATCH, WRAP)
-        })
-        val appVersion = try {
-            ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: ""
-        } catch (e: Exception) { "" }
-        // Version chip: a quiet rounded pill of its own — modern typography
-        // (tabular feel) without competing with the name above it.
-        creditsCard.addView(TextView(ctx).apply {
-            text = if (appVersion.isNotEmpty()) "v$appVersion" else "v1.0"
-            textSize = 10.5f; setTextColor(col(R.color.text_secondary))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            letterSpacing = 0.04f
-            gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = ctx.dpf(8f)
-                setColor(col(R.color.bg_secondary))
-                setStroke(dp(1), col(R.color.border_subtle))
-            }
-            setPadding(dp(10), dp(3), dp(10), dp(3))
-            layoutParams = LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT).also {
-                it.gravity = Gravity.CENTER_HORIZONTAL; it.topMargin = dp(6)
-            }
-        })
-        creditsCard.addView(TextView(ctx).apply {
-            text = "Fast, private file sharing \u2014 no internet required."
-            textSize = 11.5f; setTextColor(col(R.color.text_muted))
-            gravity = Gravity.CENTER
-            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(8) }
-        })
-        // Hairline divider between identity and actions.
-        creditsCard.addView(View(ctx).apply {
-            setBackgroundColor(col(R.color.border_subtle))
-            layoutParams = lp(MATCH, 1).also { it.topMargin = dp(16); it.bottomMargin = dp(4) }
-        })
-        creditsCard.addView(TextView(ctx).apply {
-            text = "Created by naXim"
-            textSize = 11.5f; setTextColor(col(R.color.text_secondary))
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            gravity = Gravity.CENTER
-            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(10) }
-        })
-        // Link rows: rounded-RECTANGLE ripples (v1.0 \u00a7ripple-stretch — the
-        // old rows used bg_icon_ripple's OVAL mask stretched across a
-        // full-width row, so every press produced a wide ellipse ripple
-        // "stretching" past the row). Now each row owns its own correctly
-        // rounded ripple, clipped to its outline.
-        fun aboutLinkRow(iconRes: Int, label: String, url: String, topMarginDp: Int): LinearLayout {
-            val row = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                isClickable = true; isFocusable = true
-                background = Widgets.rippleRect(ctx, col(R.color.bg_secondary), radiusDp = 10,
-                    strokeColor = col(R.color.border_subtle))
-                clipToOutline = true
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(topMarginDp) }
-                setOnClickListener {
-                    try {
-                        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse(url)))
-                    } catch (e: Exception) {
-                        android.widget.Toast.makeText(ctx, "No app found to open this link", android.widget.Toast.LENGTH_SHORT).show()
+        // ── PASS 19 (§5+§6): the About section is now the dedicated,
+        // professionally designed identity + updates screen — see
+        // update/AboutUpdateSection.kt. The old inline credits card (logo,
+        // name, version chip, two link rows) is fully replaced by it: real
+        // launcher icon, genuine package metadata, the creator credit, the
+        // project repository, and the complete §6 update surface (auto-check
+        // toggle with 24h pacing, manual check, in-app download with progress
+        // and safe resumption, package + signing verification against THIS
+        // installation, and the Android installer handoff).
+        // local non-null alias so the lambdas below capture a stable ref
+        var sectionRef: com.lumidrop.x.update.AboutUpdateSection.Section? = null
+        fun sec() = sectionRef!!
+        aboutSection = com.lumidrop.x.update.AboutUpdateSection.build(
+            ctx, ::dp, { res -> col(res) }, root,
+            onCheckNow = { manual ->
+                sec().render(com.lumidrop.x.update.UpdateManager.State(
+                    com.lumidrop.x.update.UpdateManager.Phase.CHECKING,
+                    com.lumidrop.x.update.UpdateManager.installedVersionName(ctx)))
+                Thread {
+                    com.lumidrop.x.update.UpdateManager.checkForUpdates(ctx, manual)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { sectionRef?.render() }
+                }.start()
+            },
+            onDownload = { release ->
+                cancelRequested.set(false)
+                Thread {
+                    com.lumidrop.x.update.UpdateManager.download(ctx, release) { cancelRequested.get() }
+                    val st = com.lumidrop.x.update.UpdateManager.state
+                    if (st.phase == com.lumidrop.x.update.UpdateManager.Phase.DOWNLOAD_COMPLETE) {
+                        // §6.6: verify BEFORE any install handoff
+                        val apk = com.lumidrop.x.update.UpdateManager.apkFileFor(ctx, release)
+                        val verdict = com.lumidrop.x.update.UpdateManager.verify(ctx, release, apk)
+                        if (verdict is com.lumidrop.x.update.UpdateManager.VerifyResult.Blocked) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                android.widget.Toast.makeText(ctx, verdict.reason, android.widget.Toast.LENGTH_LONG).show()
+                                sectionRef?.render()
+                            }
+                        }
                     }
-                }
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { sectionRef?.render() }
+                }.start()
+            },
+            onCancelDownload = { cancelRequested.set(true) },
+            onInstall = { release ->
+                val apk = com.lumidrop.x.update.UpdateManager.apkFileFor(ctx, release)
+                val ok = com.lumidrop.x.update.UpdateManager.launchInstall(ctx, apk)
+                if (!ok) android.widget.Toast.makeText(ctx,
+                    "The installer could not be opened", android.widget.Toast.LENGTH_LONG).show()
+                sectionRef?.render()
             }
-            row.addView(ImageView(ctx).apply {
-                setImageDrawable(Widgets.icon(ctx, iconRes, col(R.color.accent_light)))
-                layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).also { it.marginEnd = dp(9) }
-            })
-            row.addView(TextView(ctx).apply {
-                text = label; textSize = 13f; setTextColor(col(R.color.text_secondary))
-                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            })
-            row.addView(ImageView(ctx).apply {
-                setImageDrawable(Widgets.icon(ctx, R.drawable.ic_chevron_right, col(R.color.text_muted)))
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
-            })
-            return row
-        }
-        creditsCard.addView(aboutLinkRow(R.drawable.ic_globe, "Website", "https://naxim-labs.netlify.app", 12))
-        creditsCard.addView(aboutLinkRow(R.drawable.ic_link, "GitHub", "https://github.com/0naXim0", 6))
-
-        // Update controls live in About so the app can check the canonical
-        // GitHub release without adding a second settings destination. The
-        // download action is backed by DownloadManager and remains visible
-        // until that manager reports a completed APK download.
-        updateStatusText = TextView(ctx).apply {
-            text = "Check GitHub for the latest version."
-            textSize = 11.5f; setTextColor(col(R.color.text_muted)); gravity = Gravity.CENTER
-            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(16) }
-        }
-        creditsCard.addView(updateStatusText)
-        checkUpdateButton = TextView(ctx).apply {
-            text = "Check for update"; textSize = 13f; setTextColor(col(R.color.text_primary))
-            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
-            background = Widgets.rippleRect(ctx, col(R.color.bg_secondary), radiusDp = 10,
-                strokeColor = col(R.color.border_subtle))
-            setPadding(dp(12), dp(11), dp(12), dp(11))
-            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(10) }
-            setOnClickListener { checkForUpdates() }
-        }
-        creditsCard.addView(checkUpdateButton)
-        downloadUpdateButton = TextView(ctx).apply {
-            text = "Download Latest Version"; textSize = 13f; setTextColor(android.graphics.Color.WHITE)
-            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
-            background = ContextCompat.getDrawable(ctx, R.drawable.bg_btn_primary)
-            setPadding(dp(12), dp(11), dp(12), dp(11))
-            layoutParams = lp(MATCH, WRAP).also { it.topMargin = dp(8) }
-            setOnClickListener { downloadLatestVersion() }
-            visibility = View.GONE
-        }
-        creditsCard.addView(downloadUpdateButton)
-        refreshDownloadedState()
-        renderUpdateState()
-        root.addView(creditsCard)
+        )
+        sectionRef = aboutSection
+        aboutSection?.attach()
 
         scroll.addView(root)
 
@@ -856,6 +634,15 @@ class SettingsFragment : Fragment() {
         // re-registers on every later entry into the Settings tab.
         if (!isHidden) com.lumidrop.x.ui.MusicPlayback.attachCompactHost(musicPillSlot)
         return frame
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // §6.1/§6.10: every resume reconciles (a version change means an
+        // install SUCCEEDED — report and clean the temp APK) and runs the
+        // paced auto-check (24h interval, toggle-respecting, never during
+        // an active download/install).
+        aboutSection?.onResume()
     }
 
     override fun onDestroyView() {

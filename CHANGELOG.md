@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2 (version code 92)
+
+- Hardened the in-app update center with version-code-aware release selection.
+- Added APK package, version, signature, checksum, and install-result verification before installation.
+- Improved download resume, cancellation, failure handling, and update-state persistence.
+- Refined transfer, media, web-client, and native file-sharing reliability.
+- Published a signed, zip-aligned universal APK using the established LumiDrop X release key.
+
 ## 1.0.1 (version code 90)
 
 - Added **Check for update** to Settings → About.

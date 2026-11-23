@@ -4953,6 +4953,12 @@ document.getElementById('pwd').focus();
     }
 
     private val NATIVE_PUSH_TTL = 3 * 60_000L
+    // ── FP18 (§5): the receiving-slot queue-turn bound. Well under the
+    // sender's 45-second read timeout so an honest "still queued" answer
+    // always precedes any socket-timeout classification; long enough that an
+    // ordinary slot handover (one in-flight file finishing) never pays a
+    // 425 round trip at all.
+    private val SLOT_WAIT_MAX_MS = 12_000L
     // Pass-10 (automatic resume): how long an ACCEPTED push tolerates a
     // silent sender before its record is swept. Now deliberately mirrors the
     // sender's own AUTO_RESUME_WINDOW (10 min) instead of the old 3 minutes:
@@ -6977,8 +6983,29 @@ document.getElementById('pwd').focus();
         // discipline intact for the resumed leg exactly like a fresh one.
         val interruptedId = if (pendingId == null && pausedActiveId == null)
             TransferManager.findInterruptedUploadId("${id}::$relPath") else null
+        // ── FINAL PRODUCTION PASS 18 (§5/§6 — the queue turn must be visible, ──
+        // never a silent unbounded block): the old call waited FOREVER for a
+        // receiving slot. A queued POST read none of its body and answered
+        // nothing, so a sender whose turn took longer than its 45-second
+        // read timeout classified the dead wait as a network failure,
+        // RETRYABLE'd, and its re-POST re-entered the FIFO TAIL — later
+        // files of a large batch starved at that edge behind one slow first
+        // file, the sender's rows sat ACTIVE-with-zero-progress and the
+        // receiver's mirror rows sat PENDING: exactly the residual
+        // sender-Waiting / receiver-nothing shape Pass 18 reopens. The wait
+        // is now bounded to SLOT_WAIT_MAX_MS; a live uncancelled waiter that
+        // hasn't reached its turn answers 425 TOO EARLY with the live queue
+        // depth, which the FP18 sender classifies as "queued, retry soon"
+        // — no backoff burn, no socket-timeout guesswork, and the FIFO
+        // position is preserved across the retry (the re-POST re-enters the
+        // queue exactly as before, but within seconds, not after 45 s of
+        // dead air).
         val heldSlotId: String? = if (pendingId != null) {
-            if (!TransferManager.acquireReceivingSlot(pendingId)) return jsonErrClose("Cancelled by host")
+            when (TransferManager.acquireReceivingSlotBounded(pendingId, SLOT_WAIT_MAX_MS)) {
+                TransferManager.SlotWait.CANCELLED -> return jsonErrClose("Cancelled by host")
+                TransferManager.SlotWait.STILL_QUEUED -> return jsonQueued()
+                else -> {}
+            }
             pendingId
         } else (pausedActiveId?.let { pid ->
             // ── Pass-20: the parked receive row re-acquires a slot exactly ──
@@ -6987,14 +7014,22 @@ document.getElementById('pwd').focus();
             // the resumed leg waits its FIFO turn (with the ordinary
             // prioritized bump requestResume already applied) so the batch's
             // pacing stays exactly as disciplined as a first dispatch.
-            if (!TransferManager.acquireReceivingSlot(pid)) return jsonErrClose("Cancelled by host")
+            when (TransferManager.acquireReceivingSlotBounded(pid, SLOT_WAIT_MAX_MS)) {
+                TransferManager.SlotWait.CANCELLED -> return jsonErrClose("Cancelled by host")
+                TransferManager.SlotWait.STILL_QUEUED -> return jsonQueued()
+                else -> {}
+            }
             pid
             // ── Pass-22 (compile fix): the original chained a second `else`
             // onto this if — two else branches is a syntax error, so this
             // path could never build. The interrupted-row lookup is the
             // fallthrough the elvis below expresses, exactly as intended.
         } ?: interruptedId?.let { iid ->
-            if (!TransferManager.acquireReceivingSlot(iid)) return jsonErrClose("Cancelled by host")
+            when (TransferManager.acquireReceivingSlotBounded(iid, SLOT_WAIT_MAX_MS)) {
+                TransferManager.SlotWait.CANCELLED -> return jsonErrClose("Cancelled by host")
+                TransferManager.SlotWait.STILL_QUEUED -> return jsonQueued()
+                else -> {}
+            }
             iid
         })
         // ── Pass-17 (host-cancel finality, queued native push): the request ──
@@ -8285,7 +8320,7 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                     it.addHeader("Cache-Control", "max-age=86400")
                 }
             }
-            val bmp = decodeScaled(file.absolutePath, PREVIEW_MAX_PX)
+            val bmp = decodeScaled(file.absolutePath, PREVIEW_MAX_PX, null)   // preview: 2048px — above the store kinds, full decode by design
             if (bmp != null) {
                 val baos = ByteArrayOutputStream()
                 bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
@@ -8338,8 +8373,25 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
     // was emptied — turned into N full source decodes of the same file.
     // Identity rides the key, so a changed file can never serve a stale
     // thumbnail. Bounded: 48 entries of already-downscaled JPEG (~1-3 MB).
+    // ── PASS 19 (§4.5): the hot tier is budgeted BY BYTES (4 MB), not
+    // entries — a 48-entry count cap let 48 near-300 KB 512px tiles occupy
+    // ~14 MB while the same cap evicted hundreds of tiny 4 KB micro tiles
+    // needlessly. Entry count is still floored at 96 so a burst of small
+    // tiles never thrashes. Eviction stays LRU (accessOrder=true above).
     private val thumbCache = object : LinkedHashMap<String, ByteArray>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>): Boolean = size > 48
+        private var bytes = 0L
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>): Boolean {
+            val overBytes = bytes > 4 * 1024 * 1024
+            val overCount = size > 96
+            if (!overBytes && !overCount) return false
+            bytes -= eldest.value.size
+            return true
+        }
+        override fun put(key: String, value: ByteArray): ByteArray? {
+            val prev = super.put(key, value)
+            bytes += value.size - (prev?.size ?: 0)
+            return prev
+        }
     }
 
     // ── Pass-15 (fast first image open): the lightbox preview twin of ─────
@@ -8372,6 +8424,8 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         File(context.cacheDir, "webthumbs").apply { mkdirs() }
     }
     private val thumbGenGate = java.util.concurrent.Semaphore(3, true)
+    // PASS 19 (§4.4): one in-flight decode per thumbId — see apiThumb's note.
+    private val thumbInflight = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CompletableFuture<ByteArray?>>()
 
     // ── Pass-17 (instant media on the iPad 4 — server-side PRE-WARM) ────────
     // A legacy browser (iOS 10: no loading=lazy, no HTTP/2, 4-6 plain HTTP/1.1
@@ -8429,7 +8483,7 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                         try { return decode() } finally { thumbGenGate.release() }
                     }
                     val bmp = when {
-                        MimeTypes.isImage(ext) -> warmDecode { decodeScaled(path, size) }
+                        MimeTypes.isImage(ext) -> warmDecode { decodeScaled(path, size, context) }
                         MimeTypes.isVideo(ext) -> warmDecode { videoThumb(path, size) }
                         MimeTypes.isAudio(ext) -> warmDecode { com.lumidrop.x.media.ThumbnailShared.audioThumb(path, size) }
                         else -> null
@@ -8444,6 +8498,24 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             }
         } catch (e: Exception) { /* never let warming break the listing */ }
     }
+    // ── PASS 19 (§4.5): the disk tier is capped at 64 MB, trimmed by
+    // last-modified (oldest first) after each write. Android's own cacheDir
+    // management remains the outer bound; this keeps a months-long session
+    // from growing the tier without limit on its own.
+    private fun trimThumbDisk() {
+        try {
+            val files = thumbDiskCacheDir.listFiles() ?: return
+            var total = files.sumOf { it.length() }
+            if (total <= 64L * 1024 * 1024) return
+            val sorted = files.sortedBy { it.lastModified() }
+            for (f in sorted) {
+                if (total <= 64L * 1024 * 1024) break
+                val len = f.length()
+                if (f.delete()) total -= len
+            }
+        } catch (e: Exception) { /* cache dir trouble — the tier still serves reads */ }
+    }
+
     private fun thumbDiskFile(thumbId: String): File {
         val md = java.security.MessageDigest.getInstance("SHA-256")
             .digest(thumbId.toByteArray(Charsets.UTF_8))
@@ -8501,6 +8573,25 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 return thumbCachedResponse(fromDisk, etag)
             } catch (e: Exception) { /* unreadable entry — fall through and regenerate */ }
         }
+        // ── PASS 19 (§4.4 — in-flight dedup): a second request for the SAME
+        // thumbnail while its decode is still running (a legacy browser's
+        // tile burst racing the pre-warm executor, a re-rendered window)
+        // used to queue its OWN full decode. It now waits on the in-flight
+        // future and answers from its result — one decode per thumbId, ever.
+        val existing: java.util.concurrent.CompletableFuture<ByteArray?>? = synchronized(thumbInflight) {
+            val f = thumbInflight[thumbId]
+            if (f != null) f else {
+                val mine = java.util.concurrent.CompletableFuture<ByteArray?>()
+                thumbInflight[thumbId] = mine
+                null
+            }
+        }
+        if (existing != null) {
+            // someone else is decoding this exact id — wait for them
+            val theirBytes: ByteArray? = try { existing.get(30, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { null }
+            if (theirBytes != null) return thumbCachedResponse(theirBytes, etag)
+            // their decode failed — fall through and try our own
+        }
         val ext  = file.extension.lowercase()
         // Pass-16: bounded generation — at most 2 concurrent decodes, FIFO.
         // The permit is released in the finally below; queued requests simply
@@ -8530,9 +8621,10 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             }
         }
         val bmp: Bitmap?
+        val myFuture = synchronized(thumbInflight) { thumbInflight[thumbId] }
         try {
             bmp = when {
-                MimeTypes.isImage(ext) -> decodeScaled(path, sz)
+                MimeTypes.isImage(ext) -> decodeScaled(path, sz, context)
                 MimeTypes.isVideo(ext) -> videoThumb(path, sz)
                 // New: embedded album art for audio files, previously not
                 // attempted at all here (fell straight to "no thumb" below).
@@ -8540,8 +8632,16 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 // adds a thumbnail when one genuinely exists.
                 MimeTypes.isAudio(ext) -> com.lumidrop.x.media.ThumbnailShared.audioThumb(path, sz)
                 else                   -> null
-            } ?: return newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "No thumb")
+            }
+            if (bmp == null) {
+                myFuture?.complete(null)
+                return newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "No thumb")
+            }
+        } catch (e: Exception) {
+            myFuture?.completeExceptionally(e)
+            throw e
         } finally {
+            thumbInflight.remove(thumbId)
             thumbGenGate.release()
         }
         val baos = ByteArrayOutputStream()
@@ -8551,7 +8651,8 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         val b = baos.toByteArray()
         synchronized(thumbCache) { thumbCache[thumbId] = b }
         // Pass-16: persist for every future session/restart/device.
-        try { diskFile.writeBytes(b) } catch (e: Exception) { /* cache dir full/unwritable — memory tier still serves */ }
+        try { diskFile.writeBytes(b); trimThumbDisk() } catch (e: Exception) { /* cache dir full/unwritable — memory tier still serves */ }
+        myFuture?.complete(b)
         return thumbCachedResponse(b, etag)
     }
 
@@ -8559,8 +8660,8 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
     // shared verbatim with the native app's own Recent Files thumbnail
     // engine (Phase 16) rather than duplicated here. Kept as thin
     // same-signature wrappers so every call site below is unchanged.
-    private fun decodeScaled(path: String, maxSz: Int): Bitmap? =
-        com.lumidrop.x.media.ThumbnailShared.decodeScaled(path, maxSz)
+    private fun decodeScaled(path: String, maxSz: Int, context: Context? = null): Bitmap? =
+        com.lumidrop.x.media.ThumbnailShared.decodeScaled(path, maxSz, context)
 
     private fun videoThumb(path: String, maxSz: Int = 256): Bitmap? =
         com.lumidrop.x.media.ThumbnailShared.videoThumb(path, maxSz)
@@ -11055,6 +11156,26 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
     private fun jsonErrClose(msg: String) =
         noCache(newFixedLengthResponse(Status.BAD_REQUEST, "application/json; charset=utf-8",
             JSONObject().put("error", msg).toString())).also { it.closeConnection(true) }
+
+    // ── FP18 (§5): HTTP 425 Too Early — "genuinely queued behind other
+    // receives, retry". Built via Status.lookup(425) because this NanoHTTPD
+    // fork's enum may predate the constant; the closest throttling status is
+    // the fallback. The answer closes the connection exactly like the
+    // jsonErrClose refusals: the file POST's body is mid-flight on the wire
+    // (the sender streams it while the receiver waits its slot turn), so a
+    // keep-alive answer would park unread body bytes on the socket and
+    // corrupt the worker's next-request parse. The sender's re-POST opens a
+    // fresh connection — one bounded TCP setup per queued file, in exchange
+    // for never classifying an honest queue turn as a 45-second network
+    // death.
+    private fun status425(): Status =
+        try { Status.lookup(425) } catch (e: Exception) { Status.TOO_MANY_REQUESTS }
+
+    private fun jsonQueued(): Response =
+        noCache(newFixedLengthResponse(status425(), "application/json; charset=utf-8",
+            JSONObject().put("queued", true)
+                .put("queueDepth", TransferManager.receivingQueueDepth()).toString()))
+            .also { it.closeConnection(true) }   // the POST body is still inbound — die with the answer, never poison keep-alive
     private fun sanitize(s: String) =
         s.replace(sanitizeRegex, "_").replace(controlCharsRegex, "_").trimStart('.').take(255).ifEmpty { "file" }
     // Phase 8 (§8.3): compiled once — sanitize() runs per uploaded/downloaded

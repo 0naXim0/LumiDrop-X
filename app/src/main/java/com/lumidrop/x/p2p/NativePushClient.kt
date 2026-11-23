@@ -208,6 +208,14 @@ object NativePushClient {
     // honestly interrupted (manual Retry re-announces a fresh session and
     // adopts preserved partials, exactly as before).
     private enum class StreamOutcome { SUCCESS, RETRYABLE, REFUSED_CANCELLED, REFUSED_DECLINED, FATAL, SESSION_GONE,
+        // ── FINAL PRODUCTION PASS 18 (§5): the receiver's 425 TOO EARLY — the
+        // file POST is genuinely QUEUED behind the receiver's concurrency
+        // gate. NOT an error: the row stays honest, no backoff is consumed,
+        // and the re-POST happens promptly (the receiver re-enters it in its
+        // FIFO). This is the classification that makes the old shape — a
+        // queued turn silently eating a 45-second read timeout and being
+        // retried as a "network failure" — impossible.
+        QUEUED_AT_RECEIVER,
         // ── Pass-16 (pause-yield): the user paused this send — abort the POST,
         // park the file (checkpoint preserved on the receiver), free the ──
         // dispatch permit for the next Waiting item. Not an error, not a
@@ -3088,6 +3096,32 @@ object NativePushClient {
                         fp.state = FileState.NOT_DONE
                         return
                     }
+                    // ── FP18 (§5): queued at the receiver — retry promptly, burn ──
+                    // nothing. The 425 already closed the connection, the FIFO
+                    // position was re-entered by the next POST, and the
+                    // queue-depth the answer carried is visible in the trace.
+                    // A gentle settle (2 s) paces the retry without the
+                    // RETRYABLE ladder's backoff: the queue is making
+                    // progress (one file per turn), and each QUEUED answer is
+                    // bounded by the receiver's own SLOT_WAIT_MAX_MS.
+                    StreamOutcome.QUEUED_AT_RECEIVER -> {
+                        // Bounded: a queue that never drains (a wedged first
+                        // file on the receiver) must not park this sender
+                        // forever — the ordinary auto-resume window is the
+                        // ceiling, after which the honest interrupted verdict
+                        // (Retry re-announces) takes over, exactly like any
+                        // other sustained non-progress.
+                        if (System.currentTimeMillis() - firstAttemptAtMs > AUTO_RESUME_WINDOW_MS) {
+                            if (TransferManager.get(tid)?.isZipStream == true)
+                                TransferManager.fail(tid)
+                            else
+                                TransferManager.fail(tid, interrupted = true)
+                            fp.state = FileState.NOT_DONE
+                            return
+                        }
+                        try { kotlinx.coroutines.delay(2_000L) } catch (e: Exception) { /* cancelled — the loop-top checks own it */ }
+                        continue
+                    }
                     StreamOutcome.RETRYABLE -> {
                         val elapsed = System.currentTimeMillis() - firstAttemptAtMs
                         if (elapsed > AUTO_RESUME_WINDOW_MS) {
@@ -3389,6 +3423,13 @@ object NativePushClient {
             }
             val code = conn.responseCode
             if (code in 200..299) return StreamOutcome.SUCCESS
+            // ── FP18 (§5): the receiver's honest queue answer — the body is
+            // read BEFORE any error classification (the connection was
+            // closed with the answer, so this is our one look at it).
+            if (code == 425) {
+                val qBody = try { conn.errorStream?.bufferedReader()?.use { it.readText() } } catch (e: Exception) { "" } ?: ""
+                if (qBody.contains("\"queued\"")) return StreamOutcome.QUEUED_AT_RECEIVER
+            }
             // The receiver's DELIBERATE answers — resolve as decisions, never
             // as failures ("cancelled transfers must never show Failed"):
             //   "Cancelled by host"  -> this row was cancelled on the peer.

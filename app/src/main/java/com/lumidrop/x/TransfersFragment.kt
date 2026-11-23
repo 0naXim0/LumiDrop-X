@@ -7061,10 +7061,22 @@ class TransfersFragment : Fragment() {
     // card's real width and steps the font size down (11sp → 9sp floor)
     // before ever showing an ellipsis, re-deriving on every bind so a
     // rotation/resize simply lands the correct size on the next pass.
+    // ── PASS 20 (§3 — reliable direction-colored device names): the span ──
+    // position is now COMPUTED from the line's construction, never searched.
+    // detailLine/groupDetailLine always place the bare peer name as a
+    // distinct leading segment of its part ("peer  ·  rest" / parts[0]);
+    // the exact index is found by matching the peer as a COMPLETE segment
+    // (bounded by the line start or the "  ·  " separator), so a device
+    // name that also appears inside a filename, a text snippet, or a size
+    // label can never capture the span, and a name that somehow cannot be
+    // located (defensive) leaves the line uncolored rather than coloring a
+    // wrong occurrence. The color still comes from the row's RELIABLE
+    // direction metadata (received=purple accent, sent=orange) — never from
+    // the device name's text.
     private fun historyDetailSpan(full: String, peer: String, received: Boolean): android.text.SpannableString {
         val sp = android.text.SpannableString(full)
         if (peer.isNotEmpty()) {
-            val start = full.indexOf(peer)
+            val start = peerSegmentStart(full, peer)
             if (start >= 0) {
                 val color = if (received) col(R.color.accent) else col(R.color.orange)
                 sp.setSpan(android.text.style.ForegroundColorSpan(color), start, start + peer.length,
@@ -7072,6 +7084,31 @@ class TransfersFragment : Fragment() {
             }
         }
         return sp
+    }
+
+    /** The byte offset of [peer] as a COMPLETE segment of [full] — a segment
+     *  is the run between line start / a "  ·  " separator and the next
+     *  separator / line end. Returns -1 when the peer is not present as a
+     *  whole segment (never a substring hit inside another word). */
+    private fun peerSegmentStart(full: String, peer: String): Int {
+        if (peer.isEmpty()) return -1
+        val sep = "  ·  "
+        val sep2 = "  .  "
+        var search = 0
+        while (search <= full.length - peer.length) {
+            val hit = full.indexOf(peer, search)
+            if (hit < 0) return -1
+            val atStart = hit == 0 ||
+                full.regionMatches(hit - sep.length, sep, 0, sep.length) ||
+                (hit >= sep2.length && full.regionMatches(hit - sep2.length, sep2, 0, sep2.length))
+            val end = hit + peer.length
+            val atEnd = end == full.length ||
+                full.regionMatches(end, sep, 0, sep.length) ||
+                full.regionMatches(end, sep2, 0, sep2.length)
+            if (atStart && atEnd) return hit
+            search = hit + 1
+        }
+        return -1
     }
 
     private fun paintDetailLine(tv: TextView?, t: TransferManager.Transfer, hidePeer: Boolean, history: Boolean) {

@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -464,8 +467,98 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 90
-        versionName "1.0.1"
+        versionCode 92
+        versionName "1.0.2"
+        // ── PRODUCTION FINAL PASS 20 (versionCode 92 — versionName 1.0.2): ══
+        // Pass-19 independent audit + fixes. §2 text-transfer badges: an
+        // accepted incoming text no longer increments the Received badge
+        // (recordTextTransfer took the file path); History badge only, once
+        // (idempotent single writer). §3 History device-name colors: the
+        // span position is computed by whole-segment matching (line
+        // start/"  ·  "/"  .  " bounds) instead of first-substring indexOf,
+        // so a name that also appears in a filename or snippet can never
+        // capture the color and a miss can never silently drop it; color
+        // still derives from the row's direction metadata (To=orange,
+        // From=purple accent). §4 native media sheet: the P19 MediaStore
+        // thumbnail-first path is now actually ACTIVE for the native sheet
+        // (the ThumbnailEngine call site passed no context, so every image
+        // cell still decoded the original photo); plus an ID-keyed
+        // optimistic peek layer for zero-IO, zero-flicker re-display on
+        // reopen/scroll-back (LRU byte-budgeted), mediaId threaded through
+        // load(), and peek-first binds on the media grid and album covers.
+        // §5 Music: every track row now carries Video's per-item Quick Play
+        // + Open With buttons (same classes, sizes, behavior, same
+        // quickPlay/openPlayWith machinery and .qp-on visibility); the
+        // audio bar's current-track handoff stays. §6 ONE unified About &
+        // Update card (identity / project / updates groups inside a single
+        // card) with the icon fixed at the root — the adaptive icon's own
+        // gradient background + mark foreground layered directly on the
+        // rounded tile (P19 rendered the whole 108dp mipmap canvas with its
+        // 61% safe-zone margins inside a padded tinted tile: the
+        // tile-in-a-tile the redesign brief called out). §7 updater:
+        // versionCode-gated offers (the audit's 1.0.0-vs-1.0.1 trap can no
+        // longer offer an uninstallable downgrade), INSTALL_CANCELLED and
+        // INSTALL_FAILED states reported honestly. versionName 1.0.2,
+        // versionCode 92.
+        // ── PRODUCTION FINAL PASS 19 (versionCode 91 — Web Client recovery ══
+        // + media performance + About redesign + in-app updates): Phase 1
+        // restored EVERY web tab after the FP18 regression — the windowing
+        // controller's Pass-5 nodes-map eviction ran AFTER Pass 4 placed the
+        // window, so every list render (all six _vlSet tabs: Images, Videos,
+        // Music, Docs, Apps, Files) evicted its own freshly placed cells and
+        // showed containers with no content. The eviction now runs BEFORE
+        // placement (Pass 1 detach) and Pass 4 reads only same-token units;
+        // verified by EXECUTING the real shipped script in a DOM harness
+        // (16/16 acceptance; the FP18 build fails the same harness on
+        // A1/A7/B2/B5). Album sync hardened (per-tab generations + atomic
+        // picks, stale responses discarded whole). Media taps no longer
+        // flash the native selection halo (scoped user-select/touch-callout/
+        // tap-highlight on media+album containers only; text selection and
+        // inputs untouched). Thumbnails: MediaStore micro/mini thumbnails
+        // served FIRST for image tiles ≤512px (no original-file decode), a
+        // byte-budgeted 4MB hot LRU, per-thumbId in-flight decode dedup, and
+        // a 64MB trimmed disk tier. About section fully redesigned (real
+        // launcher icon, package metadata, creator credit, repository link)
+        // with the integrated §6 update system: GitHub Releases discovery
+        // for 0naXim0/LumiDrop-X (audited conventions: v-tags, single
+        // universal APK), semantic version comparison with downgrade
+        // refusal, stable-only selection, 24h-paced persisted auto-check,
+        // in-app resumable download (validated Range/206), and mandatory
+        // pre-install verification (package name + version + signing
+        // identity vs the installed app; the audited v1.0.0→v1.0.1 signing
+        // break is surfaced as an explained, honest block) before the
+        // FileProvider handoff to Android's package installer.
+        // ── FINAL PRODUCTION PASS 18 (versionCode 90 — acceptance-reliability ══
+        // finale + album synchronization): PART A closes the residual
+        // sender-Waiting/receiver-nothing window at its queue root — the
+        // receiver's file endpoint waited FOREVER for a receiving slot
+        // (concurrency pinned at 1); a queued POST read no body and answered
+        // nothing, so a sender whose FIFO turn exceeded its 45-second read
+        // timeout misread the dead wait as a network failure and its re-POST
+        // re-entered the FIFO TAIL (later files of a large batch starved
+        // behind one slow first file; the sender's rows sat
+        // ACTIVE-with-zero-progress while the receiver's stayed PENDING).
+        // The wait is now bounded (SLOT_WAIT_MAX_MS = 12 s) and its expiry
+        // answers HTTP 425 with the live queue depth (Connection: close —
+        // the body is mid-flight); the FP18 sender classifies that as
+        // QUEUED_AT_RECEIVER — no backoff burn, a prompt re-POST, the whole
+        // queue-wait ceiling-bound by the ordinary auto-resume window.
+        // PART B fixes the Web Client's stale-album-content split state at
+        // its rendering root: the windowing grid's reconcile fast path keyed
+        // on WINDOW NUMBERS alone, so switching albums left the PREVIOUS
+        // album's cells on screen whenever the new list's first-window
+        // numbers matched (any two viewport-filling albums at scroll-top —
+        // deterministic, not a rare race). A per-list token now gates that
+        // fast path (same token = same list = the scroll-slide fast path is
+        // retained untouched), the live node map is dropped on every token
+        // change (an element built for the previous list can never satisfy
+        // the new list's window by path collision), and per-tab selection
+        // generations (_albumGen.img/.vid) make every list-loader response
+        // render only under the generation it captured — an album pick made
+        // while a refresh is in flight always wins. The album selection
+        // itself is now one atomic transition (generation bump → selection
+        // write → synchronous render), and the fv refresh path preserves the
+        // selection identity by construction.
         // ── GOAT-PASS 17 (versionCode 89 — incoming-transfer acceptance ──
         // reliability): the intermittent "Accept does nothing" is fixed at
         // its identity root — the announce placeholder used to key its item
@@ -1026,22 +1119,39 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    // ── PASS 20 (§8 — secure release signing) ────────────────────────────────
+    // Credentials NEVER live in the repository or the source ZIP. Resolution
+    // order (first hit wins):
+    //   1. environment variables  LDX_STORE_FILE / LDX_STORE_PASSWORD /
+    //      LDX_KEY_ALIAS / LDX_KEY_PASSWORD
+    //   2. the GIT-IGNORED local file  signing.local.properties  at the
+    //      project root with plain keys storeFile / storePassword /
+    //      keyAlias / keyPassword (see signing.local.properties.example).
+    // The official release identity is the keystore documented in the
+    // private signing backup (alias lumidrop-release); a release build
+    // without credentials is left UNSIGNED rather than silently signed
+    // with some other key.
+    def ldxProps = new Properties()
+    def ldxLocal = rootProject.file('signing.local.properties')
+    if (ldxLocal.exists()) ldxProps.load(new FileInputStream(ldxLocal))
+    def ldxStorePath = System.getenv('LDX_STORE_FILE') ?: ldxProps.getProperty('storeFile')
+    def ldxStorePass = System.getenv('LDX_STORE_PASSWORD') ?: ldxProps.getProperty('storePassword')
+    def ldxKeyAlias = System.getenv('LDX_KEY_ALIAS') ?: ldxProps.getProperty('keyAlias')
+    def ldxKeyPass  = System.getenv('LDX_KEY_PASSWORD') ?: ldxProps.getProperty('keyPassword')
+
     signingConfigs {
         release {
-            // Release credentials are loaded from the untracked keystore.properties file.
-            // Environment variables are supported for CI and take precedence.
-            def signingProps = new Properties()
-            def signingFile = rootProject.file("keystore.properties")
-            if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
-            def storePath = System.getenv("LUMIDROPX_STORE_FILE") ?: signingProps.getProperty("storeFile")
-            def storePasswordValue = System.getenv("LUMIDROPX_STORE_PASSWORD") ?: signingProps.getProperty("storePassword")
-            def aliasValue = System.getenv("LUMIDROPX_KEY_ALIAS") ?: signingProps.getProperty("keyAlias")
-            def keyPasswordValue = System.getenv("LUMIDROPX_KEY_PASSWORD") ?: signingProps.getProperty("keyPassword")
-            if (storePath && storePasswordValue && aliasValue && keyPasswordValue) {
-                storeFile rootProject.file(storePath)
-                storePassword storePasswordValue
-                keyAlias aliasValue
-                keyPassword keyPasswordValue
+            if (ldxStorePath != null && ldxStorePass != null && ldxKeyAlias != null && ldxKeyPass != null) {
+                storeFile rootProject.file(ldxStorePath)
+                storePassword ldxStorePass
+                keyAlias ldxKeyAlias
+                keyPassword ldxKeyPass
+                // §8.3: match the published v1.0.1 signature surface exactly
+                // (v1+v2+v3) so any installer that keyed on the scheme set
+                // sees an identical signing configuration.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -1049,7 +1159,9 @@ android {
     buildTypes {
         release {
             minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            if (signingConfigs.release.storeFile != null) {
+            // §8: signed ONLY when the complete official credential set is
+            // present; an unsigned artifact is the honest failure mode.
+            if (ldxStorePath != null && ldxStorePass != null && ldxKeyAlias != null && ldxKeyPass != null) {
                 signingConfig signingConfigs.release
             }
         }

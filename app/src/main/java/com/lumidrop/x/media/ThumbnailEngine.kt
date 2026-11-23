@@ -51,6 +51,37 @@ object ThumbnailEngine {
     private fun diskCacheDir(context: Context): File =
         File(context.cacheDir, "thumbs").also { it.mkdirs() }
 
+    // ── PASS 20 (§4 — the ID-keyed optimistic peek layer) ──────────────────
+    // A stable MediaStore _ID → last-rendered bitmap map, consulted on the
+    // MAIN thread by bind sites for an instant re-display with ZERO IO (no
+    // File stat, no MD5). It is an OPTIMISTIC layer only: the authoritative
+    // path+length+mtime key stays the source of truth, the background load()
+    // result always overwrites whatever the peek showed, and entries ride
+    // the same LRU byte budget (an android.util.LruCache of bitmaps, sized
+    // alongside memoryCache) so memory stays bounded.
+    private val idCache by lazy {
+        val maxKb = (Runtime.getRuntime().maxMemory() / 1024L / 32L).toInt().coerceIn(2_048, 16_384)
+        object : LruCache<String, Bitmap>(maxKb) {
+            override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
+        }
+    }
+
+    private fun idKey(mediaId: Long, sizePx: Int) = "id:$mediaId:$sizePx"
+
+    @android.annotation.SuppressLint("UseSparseArrays")
+    private fun idCachePut(mediaId: Long, sizePx: Int, bmp: Bitmap) {
+        try { idCache.put(idKey(mediaId, sizePx), bmp) } catch (e: Exception) { /* best-effort */ }
+    }
+
+    /** Main-thread-safe instant lookup for a media row's last-rendered
+     *  thumbnail. Returns null on any miss — the caller then launches the
+     *  normal async load() (which will both refresh this entry and produce
+     *  the authoritative bitmap). Never performs IO. */
+    fun peekByMediaId(mediaId: Long, sizeDp: Int, context: Context): Bitmap? {
+        if (mediaId < 0) return null
+        return try { idCache.get(idKey(mediaId, context.dpToPx(sizeDp))) } catch (e: Exception) { null }
+    }
+
     private fun cacheKey(path: String, sizePx: Int): String {
         val f = File(path)
         val raw = "$path:${f.length()}:${f.lastModified()}:$sizePx"
@@ -76,13 +107,19 @@ object ThumbnailEngine {
     /** Returns a decoded thumbnail Bitmap, or null if this file type isn't
      *  previewable / decoding failed — callers fall back to the vector
      *  file-type icon + extension badge in that case (see Phase 16 §2). */
-    suspend fun load(context: Context, path: String, category: FileCategory, sizeDp: Int): Bitmap? {
+    suspend fun load(context: Context, path: String, category: FileCategory, sizeDp: Int,
+                     mediaId: Long = -1L): Bitmap? {
         if (category != FileCategory.IMAGE && category != FileCategory.VIDEO &&
             category != FileCategory.AUDIO && category != FileCategory.APK) return null
 
         val sizePx = context.dpToPx(sizeDp)
         val key = cacheKey(path, sizePx)
-        memoryCache.get(key)?.let { return it }
+        memoryCache.get(key)?.let {
+            // PASS 20 (§4): a memory hit must also (re)publish the ID-keyed
+            // optimistic entry so the NEXT bind of this row can peek-hit.
+            if (mediaId >= 0) idCachePut(mediaId, sizePx, it)
+            return it
+        }
 
         return withContext(Dispatchers.IO) {
             decodeGate.withPermit {
@@ -112,12 +149,21 @@ object ThumbnailEngine {
                 }
                 if (diskFile.exists()) {
                     val cached = android.graphics.BitmapFactory.decodeFile(diskFile.absolutePath)
-                    if (cached != null) { memoryCache.put(key, cached); return@withPermit cached }
+                    if (cached != null) {
+                        memoryCache.put(key, cached)
+                        if (mediaId >= 0) idCachePut(mediaId, sizePx, cached)
+                        return@withPermit cached
+                    }
                 }
 
                 val fresh = try {
                     when (category) {
-                        FileCategory.IMAGE -> ThumbnailShared.decodeScaled(path, sizePx)
+                        // PASS 20 (§4): context handed through — the Pass-19
+                        // MediaStore thumbnail-first path now serves the
+                        // NATIVE sheet too (previously this call site passed
+                        // no context, so every native image cell decoded the
+                        // original photo even though the fast path existed).
+                        FileCategory.IMAGE -> ThumbnailShared.decodeScaled(path, sizePx, context)
                         FileCategory.VIDEO -> ThumbnailShared.videoThumb(path, sizePx)
                         FileCategory.AUDIO -> ThumbnailShared.audioThumb(path, sizePx)
                         // GOAT-PASS 11 (PART 3): ZIP-based package archives get
@@ -137,6 +183,7 @@ object ThumbnailEngine {
 
                 if (fresh != null) {
                     memoryCache.put(key, fresh)
+                    if (mediaId >= 0) idCachePut(mediaId, sizePx, fresh)
                     try {
                         FileOutputStream(diskFile).use {
                             fresh.compress(

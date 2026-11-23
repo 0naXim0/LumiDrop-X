@@ -2638,8 +2638,13 @@ object TransferManager {
         t.finishedAt = System.currentTimeMillis()
         transfers[t.id] = t
         if (!declined) {
-            if (direction == Direction.UPLOAD) unseenReceivedCount.incrementAndGet()
-            else unseenSentCount.incrementAndGet()
+            // ── PASS 20 (§2 — text-transfer badge classification): an ──
+            // accepted TEXT item is a content record, not a newly received
+            // filesystem item. It must NOT increment the Received tab's
+            // new-items badge (that badge represents actual newly received
+            // files); it increments ONLY the History badge, exactly once,
+            // per the existing History badge rules. Real files keep the
+            // complete() path below and are untouched by this change.
             unseenHistoryCount.incrementAndGet()   // SELECTION FINAL PASS 1 (#13.1)
         }
         touchT(t)
@@ -4361,6 +4366,49 @@ object TransferManager {
      * the caller must not proceed to stream bytes in that case, and must
      * NOT call [releaseReceivingSlot] either, since nothing was acquired.
      */
+    /**
+     * ── FINAL PRODUCTION PASS 18 (§5/§6 — the bounded, observable slot wait).──
+     * Outcome of one attempt to obtain a receiving slot:
+     *  ACQUIRED — the permit is held (release exactly as before);
+     *  CANCELLED — the row was deliberately cancelled (same as the old false);
+     *  STILL_QUEUED — [maxWaitMs] elapsed while genuinely queued behind other
+     *  waiters (the row is alive, not cancelled — the caller answers the
+     *  sender HTTP 425 with the queue depth so it can retry WITHOUT burning
+     *  its backoff budget, instead of the old silent unbounded block whose
+     *  45-second read-timeout death re-POSTed to the FIFO TAIL and starved
+     *  later files of a large batch behind one slow first file).
+     */
+    enum class SlotWait { ACQUIRED, CANCELLED, STILL_QUEUED }
+
+    /** The bounded wait the file endpoints use; null [maxWaitMs] preserves the
+     *  old unbounded semantics for every existing caller. */
+    fun acquireReceivingSlotBounded(id: String, maxWaitMs: Long): SlotWait {
+        val waitStartMs = System.currentTimeMillis()
+        receivingInFlightIds.add(id)
+        try {
+            while (!receivingGate.tryAcquire(PAUSE_POLL_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                if (isCancelAuthoritative(id)) return SlotWait.CANCELLED
+                if (id in prioritized) preemptPausedReceivingHolders()
+                // FP18: the bounded half — a live, uncancelled waiter that has
+                // queued past the bound reports STILL_QUEUED. The HTTP layer
+                // turns this into an immediate 425 + queueDepth answer, so the
+                // SENDER never eats a socket timeout for an ordinary queue
+                // turn that simply hasn't come up yet.
+                if (maxWaitMs > 0 && System.currentTimeMillis() - waitStartMs >= maxWaitMs) {
+                    return SlotWait.STILL_QUEUED
+                }
+            }
+            if (isCancelAuthoritative(id)) {
+                receivingGate.release()
+                return SlotWait.CANCELLED
+            }
+            receivingSlotHolders.add(id)
+            return SlotWait.ACQUIRED
+        } finally {
+            receivingInFlightIds.remove(id)
+        }
+    }
+
     fun acquireReceivingSlot(id: String): Boolean {
         val waitStartMs = System.currentTimeMillis()
         receivingInFlightIds.add(id)
@@ -4430,6 +4478,12 @@ object TransferManager {
      *  closes for the upload-request TTL sweep. */
     fun isReceivingInFlight(id: String): Boolean =
         id in receivingInFlightIds || id in receivingSlotHolders
+
+    /** ── FP18 (§20 diagnostics): how many receives are currently waiting for
+     *  a slot (not counting the holder(s)) — the queue depth a 425 answer
+     *  reports so the sender can show an honest "queued behind N" instead of
+     *  an opaque zero-progress wait. */
+    fun receivingQueueDepth(): Int = receivingInFlightIds.size
 
     /**
      * Download-side twin of [acquireReceivingSlot]. [key] is whatever

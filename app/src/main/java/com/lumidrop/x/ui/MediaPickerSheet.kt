@@ -2329,6 +2329,16 @@ private class MediaGridAdapter(
 
         val localPath = item.path
         holder.decodeJob?.cancel()
+        // ── PASS 20 (§4 — peek-first bind): the ID-keyed optimistic layer ──
+        // answers synchronously on the main thread when this row rendered
+        // before (a reopened sheet, a scroll back, a rebind after selection)
+        // — zero IO, zero flicker, no blank-then-pop. A miss falls through
+        // to the async path exactly as before. The peek is OPTIMISTIC: the
+        // background load() result below always lands last, so a changed
+        // file still gets its fresh thumbnail.
+        ThumbnailEngine.peekByMediaId(item.id, thumbSizeDp, ctx)?.let { peek ->
+            holder.thumb.setImageBitmap(peek)
+        }
         // Post-v1.0 fix (§open-freeze): the File.exists() stat ran DIRECTLY
         // in this launch body — scope is Main.immediate, so the body runs
         // synchronously inside onBindViewHolder up to its first suspension
@@ -2344,7 +2354,8 @@ private class MediaGridAdapter(
         holder.decodeJob = scope.launch {
             val bmp = withContext(Dispatchers.IO) {
                 if (localPath != null && File(localPath).exists()) {
-                    ThumbnailEngine.load(ctx, localPath, ThumbnailEngine.categoryOf(localPath.substringAfterLast('.')), thumbSizeDp)
+                    ThumbnailEngine.load(ctx, localPath, ThumbnailEngine.categoryOf(localPath.substringAfterLast('.')), thumbSizeDp,
+                        mediaId = item.id)
                 } else {
                     ThumbnailEngine.loadFromUri(ctx, item.uri, item.isVideo, thumbSizeDp)
                 }
@@ -2566,11 +2577,17 @@ private class AlbumGridAdapter(
         val cover = album.cover
         val localPath = cover.path
         holder.decodeJob?.cancel()
+        // ── PASS 20 (§4): same peek-first treatment as the media grid — a
+        // previously rendered cover re-displays instantly, zero IO.
+        ThumbnailEngine.peekByMediaId(cover.id, cellDp, ctx)?.let { peek ->
+            holder.cover.setImageBitmap(peek)
+        }
         // Same Main.immediate-stat fix as the media grid above (§open-freeze).
         holder.decodeJob = scope.launch {
             val bmp = withContext(Dispatchers.IO) {
                 if (localPath != null && File(localPath).exists()) {
-                    ThumbnailEngine.load(ctx, localPath, ThumbnailEngine.categoryOf(localPath.substringAfterLast('.')), cellDp)
+                    ThumbnailEngine.load(ctx, localPath, ThumbnailEngine.categoryOf(localPath.substringAfterLast('.')), cellDp,
+                        mediaId = cover.id)
                 } else {
                     ThumbnailEngine.loadFromUri(ctx, cover.uri, cover.isVideo, cellDp)
                 }

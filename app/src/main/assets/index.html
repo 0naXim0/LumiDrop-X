@@ -462,6 +462,20 @@ body:not(.sb-full) .store-track{margin-bottom:0}
 .album-card{-webkit-flex-shrink:0;flex-shrink:0;width:96px;cursor:pointer;
   border-radius:10px;overflow:hidden;border:2px solid transparent;background:var(--bg2);
   -webkit-transition:border-color .15s;transition:border-color .15s}
+/* ── PASS 19 (§3 — clean taps on media & album containers): a normal ──
+   tap must never flash the browser's native text-selection overlay or the
+   WebKit tap halo. Scoped to the interactive media surfaces only — inputs,
+   text areas and copyable filenames elsewhere keep native selection (the
+   input/textarea rule at the top of this sheet re-enables it explicitly). */
+.album-card,.album-art,.album-name,.album-cnt,
+.img-cell,.img-cell-inner,
+.media-row,.media-thumb,.media-info,.media-name,.media-meta,
+.track-row,.vid-play,.row-check{
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;            /* no long-press callout on covers/tiles */
+  -webkit-tap-highlight-color:transparent /* no grey flash halo */}
+/* The Play affordance that sits over video thumbs — same treatment. */
+.media-qp,.media-pw,.media-dl{-webkit-tap-highlight-color:transparent}
 .album-card:hover{border-color:var(--bg4)}
 .album-card.on{border-color:var(--acc);
   -webkit-box-shadow:inset 0 0 0 1px var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
@@ -2543,6 +2557,14 @@ var S={
 // paint content that belongs to a tab the user has already left (the
 // "selector says Images, screen shows Apps" class of bug).
 var _navGen=0;
+// ── FP18 (§13 — per-tab selection generations): _navGen invalidates
+// in-flight loaders on TAB navigation only. An album pick is not a tab
+// navigation, so a media-list response captured BEFORE a pick could land
+// AFTER it and render the previous album's grouping — with the strip now
+// highlighting the new album, exactly the reported split state. Each media
+// tab bumps its own generation on every pick AND on every fresh load; a
+// response may only render under the generation it captured.
+var _albumGen={img:0,vid:0};
 // ═══════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════
@@ -3919,11 +3941,35 @@ function _vlSync(st){
   if(st.units>0&&first>st.units-1)first=Math.max(0,st.units-1);
   var last=first+_VL_OVER+Math.ceil(vh/st.H)+1+_VL_OVER;
   if(last>st.units)last=st.units;
-  if(first===st.first&&last===st.last)return;
+  // FP18: the numbers-only fast path is valid only for the SAME list
+  // (token unchanged = an ordinary slide). A token change (album pick,
+  // search, refresh) must fall through to the full reconcile below even
+  // with identical window numbers — that fall-through is exactly what
+  // re-keys every slot to the new list's units.
+  if(first===st.first&&last===st.last&&st._listTok===st._tokApplied)return;
+  st._tokApplied=st._listTok;
   st.first=first;st.last=last;
   // ── GOAT-PASS 4 (§3): the slot-recycling reconcile ─────────────────────
   // Pass 1 — mark every wanted unit's key (the window's key set).
+  // ── PASS 19 (the FP18 regression root): the previous list's node map ──
+  // must be invisible to THIS pass's lookups, but it must NEVER be evicted
+  // after placement — FP18's Pass-5 wholesale eviction ran AFTER Pass 4 had
+  // placed the window, so every list render (album pick, search, refresh,
+  // every tab's first render) evicted the freshly placed units back to the
+  // pool while the controller still believed the window live: containers
+  // rendered, zero content, on every _vlSet-driven tab. The map is now
+  // detached BEFORE placement (lookup below only reads a map captured under
+  // the CURRENT list token) and Pass 5 returns to the pure stray-drop.
   var i,k,el,need=last-first,want={};
+  var freshList=st._nodesTok!==st._listTok;
+  if(freshList){
+    for(k in st.nodes){
+      el=st.nodes[k];
+      if(el&&el.parentNode)_vlCachePut(st,k,el);   // identical unit keys may re-enter via the pool — a correct reuse
+      delete st.nodes[k];
+    }
+    st._nodesTok=st._listTok;
+  }
   for(i=first;i<last;i++)want[_vlUnitKey(st,i)]=i;
   // Pass 2 — every live slot whose unit LEFT the window hands the slot back
   // (its element goes to the keyed cache — identity preserved for re-entry,
@@ -3948,6 +3994,11 @@ function _vlSync(st){
   var fi=0;
   for(i=first;i<last;i++){
     k=_vlUnitKey(st,i);
+    // PASS 19: with the map detached pre-placement above, this read can
+    // only hit a unit captured under the CURRENT list token — a previous
+    // list's element can never satisfy the new list's window by key
+    // collision (the FP18 goal, achieved without the post-placement
+    // eviction that emptied every tab).
     el=st.nodes[k];
     if(!el){
       el=_vlCacheTake(st,k);          // GOAT-PASS 3 (§3): the same DOM node back — no rebuild, no reload
@@ -3969,7 +4020,12 @@ function _vlSync(st){
     if(slot.className!=='vl-slot vis')slot.className='vl-slot vis';
   }
   // Pass 5 — st.nodes now describes exactly the window; drop the strays
-  // (their elements may still sit in a hidden slot — cache them).
+  // (their elements may still sit in a hidden slot — cache them). PASS 19:
+  // the FP18 wholesale eviction that used to live here ran AFTER Pass 4
+  // placed the window and deleted every freshly placed unit — the
+  // containers-render-content-missing regression on every tab. The
+  // detachment moved to Pass 1 (above); this pass is again the pure
+  // stray-drop it always was.
   for(k in st.nodes)if(!(k in want)){
     el=st.nodes[k];
     if(el&&el.parentNode)_vlCachePut(st,k,el);
@@ -4046,6 +4102,7 @@ function _vl(scroller,box,opts){
   };
   st.set=function(items){
     if(st.dead)return;
+    st._listTok=(st._listTok||0)+1;   // FP18: a new list identity — see _vlSet's note
     st.items=items||[];
     if(!st.items.length){
       for(var q2=0;q2<st.slots.length;q2++)_vlSlotRelease(st,st.slots[q2]);
@@ -4089,6 +4146,18 @@ function _vlSet(scroller,box,items,opts){
   else st.opts=opts;
   st.set(items);
 }
+// ── FINAL PRODUCTION PASS 18 (§12–§14 — the stale-album-content root): ──
+// the windowing controller's reconcile is keyed by _vlUnitKey (row + item
+// paths), but its FAST PATH was keyed by WINDOW NUMBERS alone —
+// `first===st.first && last===st.last` returned before the diff, so
+// swapping the LIST (an album pick: renderImages → _vlSet with album B's
+// items) left the previous album's slots and nodes on screen whenever the
+// new list's first-window numbers matched the old one's (any two albums
+// long enough to fill the viewport at scroll-top — a deterministic
+// mismatch, not a rare race: the highlight moved, the content didn't).
+// Every st.set now stamps a fresh list token; the numbers-only early-exit
+// is allowed ONLY within one token (an ordinary scroll slide of the SAME
+// list). A new token always runs the full reconcile, whatever the numbers.
 // Album strip: preserve the horizontal scroll position across re-renders
 // (the §6 "jumps back to the beginning" bug) and keep the SELECTED album
 // card inside the viewport without ever snapping an in-view selection.
@@ -4135,10 +4204,12 @@ function loadImages(){
   var c=document.getElementById('content');
   c.innerHTML='<div class="loading"><span class="spin">'+svgIco('spinner',18)+'</span> Loading&#8230;</div>';
   var g=_navGen;
+  var ag=++_albumGen.img;   // FP18: this load is the newest image-list intent
   xhrGet('/api/media/images').then(function(d){
     if(_navStale(g))return;   // §6/§47: rapid Home→Images→Videos must leave Images' response nowhere to land
+    if(_albumGen.img!==ag)return;   // FP18: a newer pick/load owns the tab — discard whole
     S.imgList=d.items||[];renderImages();
-  }).catch(function(e){if(!_navStale(g))c.innerHTML=_loadErrHtml(e,"renderPage('images')");});
+  }).catch(function(e){if(!_navStale(g)&&_albumGen.img===ag)c.innerHTML=_loadErrHtml(e,"renderPage('images')");});
 }
 function renderImages(){
   var c=document.getElementById('content');
@@ -4224,8 +4295,14 @@ function imgClick(path,el){
 // faster. What remains is the one shared album-switch action the strip's
 // cards call.
 function _albumPick(kind,name){
-  if(kind==='img'){S.imgAlbum=name;renderImages();}
-  else{S.vidAlbum=name;renderVideos();}
+  // FP18 (§14 — atomic selection transition): the generation bump and the
+  // selection write happen BEFORE any render, so the pick itself is the
+  // single authoritative transition — an in-flight list load captured
+  // before this pick can no longer render after it (its generation is
+  // stale), and the synchronous render below is the ONLY writer of the
+  // content area for this transition.
+  if(kind==='img'){_albumGen.img++;S.imgAlbum=name;renderImages();}
+  else{_albumGen.vid++;S.vidAlbum=name;renderVideos();}
   // §29: the new album's content starts at the top — the previous album's
   // scroll depth must not land the user mid-list in a different album
   // (that is exactly the "selector says A, content is somewhere else"
@@ -4371,10 +4448,12 @@ function loadVideos(){
   var c=document.getElementById('content');
   c.innerHTML='<div class="loading"><span class="spin">'+svgIco('spinner',18)+'</span> Loading&#8230;</div>';
   var g=_navGen;
+  var ag=++_albumGen.vid;   // FP18: this load is the newest video-list intent
   xhrGet('/api/media/videos').then(function(d){
     if(_navStale(g))return;
+    if(_albumGen.vid!==ag)return;   // FP18: a newer pick/load owns the tab — discard whole
     S.vidList=d.items||[];renderVideos();
-  }).catch(function(e){if(!_navStale(g))c.innerHTML=_loadErrHtml(e,"renderPage('videos')");});
+  }).catch(function(e){if(!_navStale(g)&&_albumGen.vid===ag)c.innerHTML=_loadErrHtml(e,"renderPage('videos')");});
 }
 function renderVideos(){
   var c=document.getElementById('content');
@@ -4581,6 +4660,8 @@ function renderMusic(){
       var play=!!(S._playingPath&&S._playingPath===it.path);
       var rowRight=
         '<div class="row-actions" onclick="event.stopPropagation()">'+
+            '<button class="media-qp" onclick="quickPlay(\''+jsq(it.path)+'\',\''+jsq(it.title||it.name||'Audio')+'\')" title="Quick Play">'+svgIco('play',11)+'</button>'+
+            '<button class="media-pw" onclick="openPlayWith(\''+jsq(it.path)+'\',\''+jsq(it.title||it.name||'Audio')+'\')" title="Open With&#8230;">'+svgIco('play',11)+'</button>'+
             '<button class="media-dl" onclick="dlFile(\''+jsq(it.path)+'\',\''+jsq(it.name)+'\')" title="Download">'+svgIco('download',15)+'</button>'+
           '</div>'+
           '<div class="row-check" onclick="event.stopPropagation()">&#10003;</div>';
@@ -8324,6 +8405,13 @@ function _onFilesChanged(){
   _fcDebT=setTimeout(function(){_fcDebT=null;_onFilesChangedNow();},400);
 }
 function _onFilesChangedNow(){
+  // FP18 (§16): S.imgAlbum / S.vidAlbum deliberately SURVIVE a content
+  // refresh — the user's selection identity is not cache state. The
+  // refreshed render re-reads them; renderImages/renderVideos normalize a
+  // selection whose album no longer exists back to 'all' (a truthful
+  // empty→all fallback, never a stale-content display). A pick made WHILE
+  // the refresh's list load is in flight bumps the tab's generation, so
+  // the refresh's response is discarded and the pick's own render stands.
   S.imgList=null;S.vidList=null;window.D_FILES=null;S.musicAll=null;S.docsAll=null;S.appsAll=null;
   _imgPipe=null;_vidPipe=null;   // Pass-14: pipeline caches die with their source lists
   _dirCache={};                  // Pass-43: directory listings are stale too
