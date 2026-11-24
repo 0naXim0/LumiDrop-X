@@ -2,9 +2,10 @@
 
 ## 1.0.3 (version code 93)
 
-- Refined Settings → About → Updates with a compact, purple-themed layout.
-- Replaced the large auto-check switch with an accessible enabled/disabled pill.
-- Preserved update checking, download, verification, persistence, and installation behavior.
+- Production-final updater reliability pass: deterministic finalization, verification, and installation handoff.
+- Added guarded update operations and immediate progress feedback to prevent duplicate actions and stuck downloads.
+- Redesigned Settings → About → Updates with a compact purple-themed AUTO CHECK pill and one state-driven primary action.
+- Preserved the established signing identity so v1.0.2 users can update in place.
 
 ## 1.0.2 (version code 92)
 

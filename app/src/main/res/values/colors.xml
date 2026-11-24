@@ -42,6 +42,7 @@
     <!-- Borders -->
     <color name="border_subtle">#3B404D</color>         <!-- was #2a2a50 -->
     <color name="border_ghost">#3a3a60</color>          <!-- unchanged for now -->
+    <color name="accent_20">#339172F6</color>            <!-- 20%-alpha accent tint (Pass 21 pill highlight) -->
     <color name="border_accent_20">#339172F6</color>    <!-- was #337c5cfc; same 20%-alpha prefix, new accent -->
     <color name="border_focus">#9172F6</color>          <!-- was #7c5cfc -->
     <color name="border_hairline_light">#14FFFFFF</color> <!-- GOAT v2: ~8% white edge highlight for surfaces

@@ -53,11 +53,14 @@ object UpdateManager {
     enum class Phase {
         IDLE, CHECKING,
         UP_TO_DATE, UPDATE_AVAILABLE,
-        DOWNLOADING, DOWNLOAD_COMPLETE,
+        DOWNLOADING, FINALIZING, DOWNLOAD_COMPLETE,
         VERIFYING, VERIFIED, VERIFY_FAILED,
+        READY_TO_INSTALL,          // verified — one Install action away (§1.2)
+        INSTALL_PERMISSION_REQUIRED, // §9.1: the OS needs the install-unknown-apps grant
         INSTALL_PENDING,           // installer launched, awaiting the user
         INSTALL_CANCELLED,         // §7.6: user backed out of the installer — retry stays available
         INSTALL_FAILED,            // §7.6: the installer flow itself errored
+        UPDATE_INSTALLED,          // §9.1.9: the new version is actually running (verifiable)
         CHECK_FAILED, DOWNLOAD_FAILED
     }
 
@@ -73,7 +76,41 @@ object UpdateManager {
     @Volatile var state: State = State(Phase.IDLE)
         private set
     private val stateRef = AtomicReference(state)
-    private fun setState(s: State) { state = s; stateRef.set(s) }
+    private fun setState(s: State) { state = s; stateRef.set(s); notifyState(s) }
+
+    // ── PASS 21 (§3.3 — duplicate-operation prevention): ONE in-flight ──
+    // operation at a time, enforced by compare-and-set on this guard. A
+    // rapid double-tap, a re-entrant auto-check, or a second download for
+    // the same release all fail the CAS and are ignored — never queued,
+    // never duplicated. Released by the owning operation's exit path
+    // (finally), so an exception can never wedge the updater permanently.
+    private val operationGuard = java.util.concurrent.atomic.AtomicBoolean(false)
+    private fun acquireGuard(): Boolean = operationGuard.compareAndSet(false, true)
+    private fun releaseGuard() { operationGuard.set(false) }
+    fun isOperationInFlight(): Boolean = operationGuard.get()
+
+    /** True while [phase] belongs to the download/verify/install pipeline. */
+    fun isBusyPhase(phase: Phase): Boolean = phase in BUSY_PHASES
+    private val BUSY_PHASES = setOf(Phase.DOWNLOADING, Phase.FINALIZING,
+        Phase.VERIFYING, Phase.INSTALL_PENDING)
+
+    // ── PASS 21 (§2.2 — live progress + state observation): the UI no ──
+    // longer polls once at the end; it subscribes and re-renders on every
+    // state change (progress ticks land on the main thread via the
+    // listener's own handler). Listeners are invoked on the CALLING thread
+    // — the UI installs a main-thread dispatcher, background paths are
+    // fire-and-forget safe (a throwing listener never breaks the engine).
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(State) -> Unit>()
+    fun addListener(l: (State) -> Unit) {
+        listeners.add(l)
+        // the synchronous replay is try-caught like notifyState — a
+        // throwing listener must never crash the registering thread
+        try { l(stateRef.get()) } catch (e: Exception) { }
+    }
+    fun removeListener(l: (State) -> Unit) { listeners.remove(l) }
+    private fun notifyState(s: State) {
+        for (l in listeners) { try { l(s) } catch (e: Exception) { } }
+    }
 
     /** Test seam: replaces the network fetch. Production default talks HTTPS. */
     @Volatile var fetcher: ((String) -> String?)? = null
@@ -90,6 +127,17 @@ object UpdateManager {
     // ══ §6.1/§6.2 — checking ═══════════════════════════════════════════════
 
     fun checkForUpdates(ctx: Context, manual: Boolean) {
+        // §3.3: a check never runs on top of a live download/verify/install
+        // pipeline, and two checks never run concurrently.
+        if (!acquireGuard()) {
+            if (manual) setState(state.copy(message = "An update operation is already running."))
+            return
+        }
+        try { checkForUpdatesInner(ctx, manual) }
+        finally { releaseGuard() }
+    }
+
+    private fun checkForUpdatesInner(ctx: Context, manual: Boolean) {
         setState(State(Phase.CHECKING, installedVersionName(ctx)))
         val body = try {
             fetcher?.invoke(RELEASES_API) ?: httpsGet(RELEASES_API)
@@ -160,23 +208,55 @@ object UpdateManager {
      * any other answer restarts from byte 0 (the partial is discarded).
      * The APK is never held in memory. Cancellation is checked per chunk.
      */
-    fun download(ctx: Context, release: Release, cancelled: () -> Boolean) {
+    /** Single-tap entry: marks the download STARTED immediately (§2.1 —
+     *  the UI flips into its downloading presentation the instant the tap
+     *  lands, never waiting for the first network callback) and enforces
+     *  the one-operation guard, then runs [downloadBlocking] on the
+     *  caller's background thread. Idempotent per the guard: a second
+     *  concurrent call is a no-op. */
+    fun download(ctx: Context, release: Release, cancelled: () -> Boolean): Boolean {
+        if (!acquireGuard()) return false   // §3.3: one download at a time
+        // §2.1: immediate, optimistic-but-honest start state (0 bytes is the
+        // truth at this instant; the first network callback refines it)
+        setState(State(Phase.DOWNLOADING, installedVersionName(ctx), release, 0L, release.apkSizeBytes))
+        try {
+            val ok = downloadBlocking(ctx, release, cancelled)
+            if (ok && !cancelled()) {
+                // §1.3: the chain download → verify → ready runs INSIDE the
+                // same guard, exactly once — completion can never strand at
+                // 100% again, and no caller needs to remember to chain.
+                verify(ctx, release, apkFileFor(ctx, release))
+            }
+            return ok
+        } finally {
+            releaseGuard()
+        }
+    }
+
+    /** The streamed download itself. Returns true only on clean EOF + a
+     *  passed size check, with streams flushed and closed BEFORE the
+     *  DOWNLOAD_COMPLETE/FINALIZING states are published. All failure and
+     *  cancel paths delete the partial file and publish an honest state. */
+    private fun downloadBlocking(ctx: Context, release: Release, cancelled: () -> Boolean): Boolean {
         val dest = apkFileFor(ctx, release)
         val url = release.apkUrl ?: run {
-            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), message = "No APK asset."))
-            return
+            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), availableRelease = release, message = "No APK asset."))
+            return false
         }
         if (!url.startsWith("https://", true)) {
-            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), message = "Refusing non-HTTPS download URL."))
-            return
+            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), availableRelease = release, message = "Refusing non-HTTPS download URL."))
+            return false
         }
         try {
             var done = dest.length().coerceAtMost(release.apkSizeBytes.takeIf { it > 0 } ?: Long.MAX_VALUE)
+            var lastTick = 0L
             while (true) {
-                if (cancelled()) { dest.delete(); setState(State(Phase.UPDATE_AVAILABLE, installedVersionName(ctx), availableRelease = release, message = "Download cancelled.")); return }
+                if (cancelled()) { dest.delete()
+                    setState(State(Phase.UPDATE_AVAILABLE, installedVersionName(ctx), availableRelease = release, message = "Download cancelled."))
+                    return false }
                 val pair = try { httpsStream(url, if (done > 0) done else -1L) } catch (e: Exception) {
                     setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), availableRelease = release, message = describeNetworkError(e)))
-                    return
+                    return false
                 }
                 val (conn, resumed) = pair
                 try {
@@ -184,7 +264,7 @@ object UpdateManager {
                     if (code !in 200..299) {
                         setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), availableRelease = release,
                             message = "The server returned HTTP $code."))
-                        return
+                        return false
                     }
                     if (done > 0 && (!resumed || code != 206)) {
                         // server ignored the range — restart clean, never append onto a 200
@@ -196,30 +276,53 @@ object UpdateManager {
                     FileOutputStream(dest, done > 0).use { out ->
                         val buf = ByteArray(64 * 1024)
                         while (true) {
-                            if (cancelled()) { out.close(); dest.delete()
-                                setState(State(Phase.UPDATE_AVAILABLE, installedVersionName(ctx), release, message = "Download cancelled.")); return }
+                            if (cancelled()) { out.flush(); out.close(); dest.delete()
+                                setState(State(Phase.UPDATE_AVAILABLE, installedVersionName(ctx), release, message = "Download cancelled."))
+                                return false }
                             val n = input.read(buf)
                             if (n < 0) break
                             out.write(buf, 0, n); done += n
-                            setState(State(Phase.DOWNLOADING, installedVersionName(ctx), release, done, total))
+                            // §2.2: smooth, real progress — throttled to ~5 Hz
+                            // so a fast connection doesn't flood the listener
+                            // (the bytes are ALWAYS the true count, never reset,
+                            // never invented; 0 total stays "unknown-size").
+                            val now = System.currentTimeMillis()
+                            if (now - lastTick >= 200L) {
+                                lastTick = now
+                                setState(State(Phase.DOWNLOADING, installedVersionName(ctx), release, done, total))
+                            }
                         }
                         out.flush()
                     }
+                    // ── PASS 21 (§1.2 — FINALIZING is an explicit, honest ──
+                    // state: EOF reached, streams flushed+closed, the final
+                    // size check runs NOW; only after it passes does the
+                    // lifecycle move on. A user watching 100% sees
+                    // "Finalizing…" instead of a frozen bar (§1.1.7-14).
+                    setState(State(Phase.FINALIZING, installedVersionName(ctx), release, done, done))
                     val expected = release.apkSizeBytes
                     if (expected > 0 && dest.length() != expected) {
                         dest.delete()
                         setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), release,
                             message = "The download was incomplete (got ${dest.length()} of $expected bytes)."))
-                        return
+                        return false
                     }
-                    return   // clean EOF + size check passed — done
+                    if (dest.length() <= 0L) {
+                        dest.delete()
+                        setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), release,
+                            message = "The download produced an empty file."))
+                        return false
+                    }
+                    // clean EOF + size check passed — the ONE true completion
+                    setState(State(Phase.DOWNLOAD_COMPLETE, installedVersionName(ctx), release, dest.length(), dest.length()))
+                    return true
                 } finally {
                     conn.disconnect()
                 }
             }
-            setState(State(Phase.DOWNLOAD_COMPLETE, installedVersionName(ctx), release, dest.length(), dest.length()))
         } catch (e: Exception) {
-            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), release, message = describeNetworkError(e)))
+            setState(State(Phase.DOWNLOAD_FAILED, installedVersionName(ctx), availableRelease = release, message = describeNetworkError(e)))
+            return false
         }
     }
 
@@ -254,6 +357,16 @@ object UpdateManager {
      * PARSES it (PackageManager's archive reader), which is safe.
      */
     fun verify(ctx: Context, release: Release, apk: File): VerifyResult {
+        // §3.3: verification is part of the one in-flight operation — if the
+        // guard is already held by the download chain, we OWN it; a caller
+        // invoking verify standalone acquires it here (idempotent either way).
+        val ownedHere = acquireGuard()
+        try {
+            return verifyInner(ctx, release, apk)
+        } finally { if (ownedHere) releaseGuard() }
+    }
+
+    private fun verifyInner(ctx: Context, release: Release, apk: File): VerifyResult {
         setState(State(Phase.VERIFYING, installedVersionName(ctx), release))
         val pm = ctx.packageManager
         val info = try {
@@ -302,9 +415,34 @@ object UpdateManager {
                 "Android cannot update the app in place across signing keys. " +
                 "The download was NOT installed — your current app is untouched.")
         }
+        // ── PASS 21 (§1.2): verification success lands in the lifecycle- ──
+        // correct terminal pair — VERIFIED (the operation result) then
+        // READY_TO_INSTALL or INSTALL_PERMISSION_REQUIRED (the user-facing
+        // state the About card designs its single primary action around).
         setState(State(Phase.VERIFIED, installedVersionName(ctx), release))
+        if (Build.VERSION.SDK_INT >= 26 && !canRequestInstalls(ctx)) {
+            setState(State(Phase.INSTALL_PERMISSION_REQUIRED, installedVersionName(ctx), release,
+                message = "Android needs your permission to let LumiDrop X install updates."))
+        } else {
+            setState(State(Phase.READY_TO_INSTALL, installedVersionName(ctx), release))
+        }
         return VerifyResult.Ok
     }
+
+    /** §9.1.4: API 26+ — can this app ask the OS to install packages? */
+    fun canRequestInstalls(ctx: Context): Boolean = try {
+        if (Build.VERSION.SDK_INT >= 26) ctx.packageManager.canRequestPackageInstalls() else true
+    } catch (e: Exception) { false }
+
+    /** §9.1.4: the Settings deep-link for the install-unknown-apps grant. */
+    fun openInstallPermissionSettings(ctx: Context): Boolean = try {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val i = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + ctx.packageName))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i); true
+        } else true
+    } catch (e: Exception) { false }
 
     private fun verifyFailed(ctx: Context, apk: File, reason: String, userAction: String): VerifyResult {
         // §6.6: an invalid download is cleaned up immediately, the current
@@ -364,7 +502,24 @@ object UpdateManager {
      */
     @SuppressLint("SetWorldReadable") // never called — kept only to document we deliberately do NOT use it
     fun launchInstall(ctx: Context, apk: File): Boolean {
+        // §3.3: one installer handoff at a time — repeated taps cannot
+        // stack multiple installer dialogs. The guard is released when the
+        // user returns (reconcile) or on failure; INSTALL_PENDING itself is
+        // a rest state, not an in-flight operation.
+        if (!acquireGuard()) return false
         try {
+            // §9.1.3-4: the permission gate comes FIRST — launching the
+            // installer without the grant just crashes or silently fails.
+            if (Build.VERSION.SDK_INT >= 26 && !canRequestInstalls(ctx)) {
+                setState(state.copy(phase = Phase.INSTALL_PERMISSION_REQUIRED,
+                    message = "Android needs your permission to let LumiDrop X install updates."))
+                return false
+            }
+            if (!apk.exists() || apk.length() <= 0L) {
+                setState(state.copy(phase = Phase.VERIFY_FAILED,
+                    message = "The downloaded APK is no longer present. Please download it again."))
+                return false
+            }
             val authority = "${ctx.packageName}.fileprovider"
             val uri: Uri = FileProvider.getUriForFile(ctx, authority, apk)
             val ext = MimeTypeMap.getSingleton().getMimeTypeFromExtension("apk") ?: "application/vnd.android.package-archive"
@@ -381,6 +536,21 @@ object UpdateManager {
             setState(state.copy(phase = Phase.INSTALL_FAILED,
                 message = "The installer could not be opened: ${e.message}"))
             return false
+        } finally {
+            // the handoff itself is instantaneous — the guard protects
+            // against double-taps during the launch, not during the OS flow
+            releaseGuard()
+        }
+    }
+
+    /** §9.3.3: the user came back without the version changing — the
+     *  installer was dismissed. Called by the About card's onResume. */
+    fun markInstallDismissed(ctx: Context) {
+        val cur = stateRef.get()
+        if (cur.phase == Phase.INSTALL_PENDING) {
+            setState(State(Phase.INSTALL_CANCELLED, installedVersionName(ctx),
+                availableRelease = cur.availableRelease,
+                message = "The installation was cancelled — your current version is untouched."))
         }
     }
 
@@ -397,9 +567,14 @@ object UpdateManager {
      */
     fun cleanupAbandoned(ctx: Context) {
         val dir = downloadDir(ctx)
-        val keep = stateRef.get().availableRelease?.let { apkFileFor(ctx, it).name }
+        val st = stateRef.get()
+        // §9.4: keep the CURRENT release's apk while the state still tracks
+        // it AND it may still be needed (verified-ready, or mid-download);
+        // an in-flight operation's file is never touched by a sweep.
+        val keep = st.availableRelease?.let { apkFileFor(ctx, it).name }
+        val inFlight = isOperationInFlight()
         dir.listFiles()?.forEach { f ->
-            if (keep == null || f.name != keep) {
+            if (!inFlight && (keep == null || f.name != keep)) {
                 try { f.delete() } catch (e: Exception) { }
             }
         }
@@ -412,11 +587,16 @@ object UpdateManager {
         val cur = installedVersionName(ctx)
         val pending = stateRef.get()
         val pendingVer = pending.availableRelease?.version
-        if (pending.phase == Phase.INSTALL_PENDING && pendingVer != null &&
+        // §1.2/§9.1.9: "installed" is claimed ONLY when the process is
+        // verifiably running the new version — never from a handoff alone.
+        val wasWaitingForInstaller = pending.phase == Phase.INSTALL_PENDING ||
+            pending.phase == Phase.INSTALL_CANCELLED
+        if (wasWaitingForInstaller && pendingVer != null &&
             ReleaseModel.compareVersions(cur, pendingVer) >= 0) {
             try { apkFileFor(ctx, pending.availableRelease!!).delete() } catch (e: Exception) { }
             cleanupAbandoned(ctx)
-            setState(State(Phase.IDLE, cur, message = "Updated to $cur."))
+            setState(State(Phase.UPDATE_INSTALLED, cur,
+                message = "Updated to $cur."))
         } else {
             cleanupAbandoned(ctx)
             setState(State(Phase.IDLE, cur))

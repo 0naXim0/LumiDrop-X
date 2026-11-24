@@ -563,43 +563,46 @@ class SettingsFragment : Fragment() {
         // local non-null alias so the lambdas below capture a stable ref
         var sectionRef: com.lumidrop.x.update.AboutUpdateSection.Section? = null
         fun sec() = sectionRef!!
+        // ── PASS 21 (§1.3/§2.1/§3.3): the wiring is now thin. The whole ──
+        // download → finalizing → verify → ready chain lives INSIDE
+        // UpdateManager.download() under its one-operation guard, and the
+        // section re-renders itself through the state listener it installs
+        // on attach — progress included. These callbacks only START work
+        // on background threads; they never chain, never duplicate, and
+        // never touch the UI state themselves (the listener owns that).
         aboutSection = com.lumidrop.x.update.AboutUpdateSection.build(
             ctx, ::dp, { res -> col(res) }, root,
             onCheckNow = { manual ->
-                sec().render(com.lumidrop.x.update.UpdateManager.State(
-                    com.lumidrop.x.update.UpdateManager.Phase.CHECKING,
-                    com.lumidrop.x.update.UpdateManager.installedVersionName(ctx)))
                 Thread {
                     com.lumidrop.x.update.UpdateManager.checkForUpdates(ctx, manual)
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { sectionRef?.render() }
                 }.start()
             },
             onDownload = { release ->
                 cancelRequested.set(false)
                 Thread {
+                    // returns after the FULL download+verify chain; a
+                    // refused guard (double-tap) is a silent no-op — the
+                    // in-flight operation is already the user's intent
                     com.lumidrop.x.update.UpdateManager.download(ctx, release) { cancelRequested.get() }
                     val st = com.lumidrop.x.update.UpdateManager.state
-                    if (st.phase == com.lumidrop.x.update.UpdateManager.Phase.DOWNLOAD_COMPLETE) {
-                        // §6.6: verify BEFORE any install handoff
-                        val apk = com.lumidrop.x.update.UpdateManager.apkFileFor(ctx, release)
-                        val verdict = com.lumidrop.x.update.UpdateManager.verify(ctx, release, apk)
-                        if (verdict is com.lumidrop.x.update.UpdateManager.VerifyResult.Blocked) {
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                android.widget.Toast.makeText(ctx, verdict.reason, android.widget.Toast.LENGTH_LONG).show()
-                                sectionRef?.render()
-                            }
+                    if (st.phase == com.lumidrop.x.update.UpdateManager.Phase.VERIFY_FAILED) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(ctx, st.message,
+                                android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { sectionRef?.render() }
                 }.start()
             },
             onCancelDownload = { cancelRequested.set(true) },
             onInstall = { release ->
                 val apk = com.lumidrop.x.update.UpdateManager.apkFileFor(ctx, release)
                 val ok = com.lumidrop.x.update.UpdateManager.launchInstall(ctx, apk)
-                if (!ok) android.widget.Toast.makeText(ctx,
-                    "The installer could not be opened", android.widget.Toast.LENGTH_LONG).show()
-                sectionRef?.render()
+                if (!ok) {
+                    val st = com.lumidrop.x.update.UpdateManager.state
+                    android.widget.Toast.makeText(ctx,
+                        st.message.ifEmpty { "The installer could not be opened" },
+                        android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         )
         sectionRef = aboutSection
@@ -646,6 +649,8 @@ class SettingsFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // PASS 21: release the update-state listener with the view
+        aboutSection?.detach()
         super.onDestroyView()
         // ── Pass-38 (#7): the dock dies with this view — release it before
         // the slot reference does, so the player never holds a dead slot.

@@ -469,6 +469,34 @@ android {
         // region.
         versionCode 93
         versionName "1.0.3"
+        // ── PRODUCTION FINAL PASS 21 (versionCode 93 — versionName 1.0.3): ══
+        // Updater lifecycle repair + update-center redesign. ROOT CAUSE of
+        // the 100%-stuck download (audited, real): download()'s clean-EOF
+        // path ended with a bare `return` INSIDE the retry loop, making the
+        // only DOWNLOAD_COMPLETE transition unreachable — the state stayed
+        // DOWNLOADING at 100% forever, so verification never started and
+        // the Settings-side chain never fired. The lifecycle is now
+        // deterministic and single-owner: download → FINALIZING (explicit
+        // flush/close/size-check state) → DOWNLOAD_COMPLETE → VERIFYING →
+        // READY_TO_INSTALL / INSTALL_PERMISSION_REQUIRED, with the whole
+        // chain running INSIDE UpdateManager.download() under a CAS
+        // operation guard (one download, one verify, one installer handoff
+        // at a time; double-taps are silent no-ops). The UI observes live
+        // state through a listener (smooth real-byte progress throttled to
+        // ~5 Hz, indeterminate-when-unknown), flips into its downloading
+        // presentation on the FIRST tap (§2.1), and renders ONE primary
+        // action per state (up-to-date→Check, available→Download,
+        // downloading→Cancel, permission→Grant, ready→Install, failed→
+        // Retry). The UPDATES section is redesigned: UPDATES header row
+        // with a compact AUTO CHECK pill at its right edge (custom two-
+        // state pill on the app's purple accent — the platform switch's
+        // sky-blue and its oversized row are gone), progress only while
+        // downloading, release details only for offers, no duplicate
+        // buttons (the Pass-20 release-body action pill is removed).
+        // Installer outcomes are honest: INSTALL_CANCELLED (user returned
+        // without a version change), UPDATE_INSTALLED (claimed only when
+        // the running version verifiably changed), cleanup never deletes
+        // an in-flight or verified-ready APK.
         // ── PRODUCTION FINAL PASS 20 (versionCode 92 — versionName 1.0.2): ══
         // Pass-19 independent audit + fixes. §2 text-transfer badges: an
         // accepted incoming text no longer increments the Received badge
