@@ -467,8 +467,38 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 93
-        versionName "1.0.3"
+        versionCode 94
+        versionName "1.0.4"
+        // ── PRODUCTION FINAL PASS 22 (versionCode 94 — versionName 1.0.4): ══
+        // Video-queue Waiting fix + first-open latency + iOS volume. ROOT
+        // CAUSE of "played videos stuck in Waiting" (audited, real): the
+        // media-tab batch path fired every <a download> within ~360ms and
+        // forgot them — no pump, no liveness watch, no re-fire — so a video
+        // being PLAYED (its /api/media stream needs the same per-origin
+        // socket pool) silently cancelled still-queued download dispatches;
+        // the server's never-requested sweep filtered source==QUICK_SHARE
+        // only, leaving the dropped PLAIN rows PENDING forever. Fixes: (1)
+        // a one-at-a-time plain-download dispatch pump (window=1, URL
+        // identity, terminal-state slot release, rq-based swallowed-
+        // dispatch release, ONE bounded zero-byte re-fire, pause-hold) —
+        // at most ONE download request exists at any moment, so playback
+        // can never mass-cancel the queue and any single dropped dispatch
+        // self-heals; (2) the never-requested sweep now covers PLAIN rows
+        // (45s peer-quiet, oldest-only — sized above the legacy iOS pump's
+        // every inter-item gap). First-open latency: the server start now
+        // prewarms every tab's list payload (stats/images/videos/music/
+        // docs/apps) on a daemon — the cold MediaStore/walkTopDown/package
+        // enumerations are paid at boot when nobody waits — and the docs
+        // listing joins the cachedJson rails (it had NO cache at all).
+        // iOS volume (iPad 4 / 10.3.3): HTMLMediaElement.volume is
+        // platform-read-only on iOS Safari — the old slider only wrote
+        // that property, so it visually moved while the sound never
+        // changed. The slider now also drives a Web Audio GainNode graph
+        // on the iOS family, built lazily INSIDE a user gesture (a context
+        // built outside one stays suspended and would be silent), with the
+        // play tap re-establishing a saved sub-100 volume; non-iOS keeps
+        // the element-volume path byte-for-byte; any Web Audio failure
+        // latches off and falls back honestly.
         // ── PRODUCTION FINAL PASS 21 (versionCode 93 — versionName 1.0.3): ══
         // Updater lifecycle repair + update-center redesign. ROOT CAUSE of
         // the 100%-stuck download (audited, real): download()'s clean-EOF

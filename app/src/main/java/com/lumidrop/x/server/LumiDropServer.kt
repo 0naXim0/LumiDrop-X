@@ -127,6 +127,34 @@ class LumiDropServer(
         // best-effort on its own daemon executor: construction never blocks,
         // and a failed warm simply falls back to the inline build.
         try { SearchIndex.warmAsync() } catch (e: Exception) { /* best-effort, always */ }
+        // ── PASS 22 (§2 — first-open latency): prewarm EVERY Web-Client ──
+        // tab's list payload at server start, on a daemon, through the exact
+        // endpoint builders (so the responseCache and the Pass-17 thumb
+        // prewarm fill as side effects). The audited shape: the first visit
+        // to a tab paid the COLD enumeration inline — a full MediaStore
+        // query for images/videos/music, a Documents+Downloads walkTopDown
+        // for docs, a whole-package enumeration for apps and the home
+        // screen's stats — seconds on the hardware this app targets, while
+        // every later visit ran on warm OS caches (the user-visible "first
+        // open slow, everything after fast"). The prewarm moves the cold
+        // cost to boot, when no client is waiting: a browser arriving later
+        // rebuilds on warm caches — the same fast path repeat visits always
+        // had. TTLs stay untouched (2-5s): freshness semantics are exactly
+        // what they were; only the COLD first hit is eliminated. A client
+        // racing the prewarm simply triggers the same build itself (last
+        // write wins, both correct). Best-effort like the search warm: a
+        // failure leaves the old inline path, never blocks the socket.
+        Thread({
+            try {
+                apiStats(); apiImages(); apiVideos(); apiMusic()
+                scanRootsToJson(arrayOf(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath,
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath)
+                ) { MimeTypes.isDoc(it.extension.lowercase()) }
+                    .let { responseCache["media-docs"] = CachedJson(it.toString(), System.currentTimeMillis(), filesVersion.get()) }
+                apiInstalledApps()
+            } catch (e: Exception) { /* best-effort prewarm — inline paths own correctness */ }
+        }, "wsx-tab-prewarm").apply { isDaemon = true }.start()
     }
 
     // Phase 10 (§speed D6): gzip OFF on the LAN. NanoHTTPD gzips every
@@ -9894,7 +9922,18 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         JSONObject().put("items", arr).put("count", arr.length())
     }
 
-    private fun apiScan(vararg roots: String, filter: (File) -> Boolean): Response {
+    private fun apiScan(vararg roots: String, filter: (File) -> Boolean): Response =
+        // ── PASS 22 (§2): the docs listing joins the cachedJson rails ──────
+        // (5s TTL + filesVersion invalidation, the same discipline stats and
+        // apps already have). It was the ONLY tab list with NO cache — every
+        // Documents/Downloads tab open re-walked both trees inline.
+        cachedJson("media-docs", 5000L) {
+            scanRootsToJson(roots, filter)
+        }
+
+    /** PASS 22 (§2): the walk itself, shared by the endpoint and the boot
+     *  prewarm so both produce byte-identical payloads. */
+    private fun scanRootsToJson(roots: Array<out String>, filter: (File) -> Boolean): JSONObject {
         val arr = JSONArray()
         for (root in roots) try {
             File(root).walkTopDown().filter { it.isFile && filter(it) }
@@ -9906,7 +9945,7 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 })
             }
         } catch (e: Exception) { }
-        return json(JSONObject().put("items", arr).put("count", arr.length()))
+        return JSONObject().put("items", arr).put("count", arr.length())
     }
 
     // ── Apps ──────────────────────────────────────────────────────────────────

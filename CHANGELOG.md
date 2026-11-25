@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 (version code 94)
+
+- Fixed the video/download queue conflict so selected downloads progress one at a time without interfering with playback.
+- Added server-side cleanup for never-requested plain download rows and improved retry handling.
+- Improved first-open loading through server-start prewarming and cached document listing.
+- Added iOS-family music volume handling through a gesture-safe Web Audio fallback.
+
 ## 1.0.3 (version code 93)
 
 - Production-final updater reliability pass: deterministic finalization, verification, and installation handoff.

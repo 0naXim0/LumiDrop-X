@@ -3131,7 +3131,11 @@ function _registerPendingDownloads(items){
 function dlFile(path,name,skipRegister){
   name=name||path.split('/').pop();
   if(!skipRegister)_registerPendingDownloads([{key:'path',value:path}]);
-  _queueDownload('/api/download?path='+enc(path),name);
+  // PASS 22 (§1): plain downloads dispatch through the one-at-a-time pump
+  // (see _dlPumpEnqueue) — the old fire-and-forget stampede is what let a
+  // played video's socket demands silently cancel queued dispatches.
+  if(_legacyIOS){_queueDownload('/api/download?path='+enc(path),name);return;}
+  _dlPumpEnqueue('/api/download?path='+enc(path),name);
 }
 function dlSelected(){
   var keys=Object.keys(S.sel);
@@ -3183,20 +3187,19 @@ function dlSelected(){
     // since it's already covered here; this is the only difference from
     // calling them directly.
     _registerPendingDownloads(registerItems);
-    // Phase 4 (v3 SS5 items 4+5): every selected item dispatches straight
-    // into the browser's NATIVE download pipeline — the client-side
-    // buffering queue is gone entirely (buffering whole files in JS blobs
-    // was what exhausted memory on low-RAM devices; the browser's own
-    // download manager never holds the file in page memory). The 150ms
-    // stagger exists purely for the browser's benefit — a burst of
-    // simultaneous <a download> clicks can get throttled or silently
-    // blocked — while the host's concurrency setting is now enforced where
-    // it cannot be bypassed: server-side, in LumiDropServer's download
-    // gate, which holds excess requests in a genuine server-side queue and
-    // lets only N transfers' bytes actually move at once.
-    for(var i=0;i<fileDls.length;i++){
-      (function(fn,delay){setTimeout(fn,delay);})(fileDls[i],i*30);
-    }
+    // ── PASS 22 (§1 — no more dispatch stampede): the 30ms-staggered ──
+    // all-at-once <a download> burst is REPLACED by the plain-download
+    // pump: dlFile/dlApk above enqueue into _dlPumpQ and exactly ONE
+    // request exists at any moment, fired the instant the previous row
+    // reaches a genuine terminal state. The old burst is what filled the
+    // browser's per-origin socket pool with gate-parked requests — the
+    // exact pressure that made a played video's media requests silently
+    // cancel still-queued download dispatches (the 12-video Waiting
+    // wedge). Server-side concurrency is unchanged (the host's download
+    // gate stays the enforcement point); the pump simply stops handing the
+    // browser more than it can honestly carry. A dropped dispatch is now
+    // detected (rq===false / zero-byte failure) and re-fired once, bounded.
+    for(var i=0;i<fileDls.length;i++){fileDls[i]();}
     if(fileDls.length)toast('Downloading '+fileDls.length+' file'+(fileDls.length!==1?'s':''),'ok');
   }
   clearSelSmooth();
@@ -4839,6 +4842,18 @@ function playTrack(idx){
   // play() promise rejections (autoplay policy, decode failure at start)
   // resolve the button back to the honest paused state instead of leaving
   // a spinner forever. Old browsers return undefined from play().
+  // ── PASS 22 (§3): the play tap is a user gesture — if the user has a ──
+  // saved volume below 100 (or already built the graph), build/refresh it
+  // NOW so the context is running before the first audible byte, instead
+  // of waiting for the first slider drag to (re)animate it.
+  try{
+    if(_isiOSFamily){
+      var _sv=null;try{_sv=localStorage.getItem('wsx_volume');}catch(e){}
+      if(_waGain||(_sv!==null&&_sv!==''&&parseInt(_sv,10)<100)){
+        if(_gainPathOK())_applyGain(_waGain?Math.max(0,Math.min(100,parseInt(_sv||'100',10)||100)):parseInt(_sv,10));
+      }
+    }
+  }catch(e){}
   try{
     var p=au.play();
     if(p&&p.catch)p.catch(function(){
@@ -5075,11 +5090,60 @@ function _loadRepeatPref(){
 // JS-driven slider, since the native control already handles mouse, touch,
 // and keyboard input consistently across every supported browser back to
 // iOS 10 Safari and Android 5's WebView with zero extra code.
+// ── PASS 22 (§3): on the iOS family the slider ALSO drives a Web Audio ──
+// gain — see _gainPathOK's doc for why the element's own volume property
+// can never work there.
+var _isiOSFamily=(function(){
+  // Every iOS Safari treats HTMLMediaElement.volume as read-only (Apple
+  // routes volume through the hardware buttons). Legacy detection
+  // (_legacyIOS) only covers < 13; the limitation is version-wide.
+  var ua=navigator.userAgent;
+  if(/iPad|iPhone|iPod/.test(ua)&&!window.MSStream)return true;
+  // iPadOS 13+ masquerades as desktop Safari — the maxTouchPoints probe
+  // is the standard tell (a real Mac reports 0/1 touch points... only
+  // touch-Macs would false-positive, and those ARE effectively iPads for
+  // audio-policy purposes).
+  try{return (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}catch(e){return false;}
+})();
+var _waCtx=null,_waGain=null,_waFailed=false;
+/** Lazily builds the iOS volume graph. MUST run inside a user gesture
+ *  (the slider's oninput, or the play tap) — an AudioContext created
+ *  outside one stays suspended on iOS, and a suspended context routing
+ *  the element is silent playback. Idempotent; one graph per element for
+ *  the page's lifetime (createMediaElementSource may only be called once
+ *  per element, and the element never changes). Any failure latches
+ *  _waFailed and the caller keeps the element-volume behavior — honest
+ *  degradation, never a broken slider pretending to work. */
+function _gainPathOK(){
+  if(_waFailed)return false;
+  if(_waGain)return true;
+  try{
+    var AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC||typeof AC.prototype.createMediaElementSource!=='function'){_waFailed=true;return false;}
+    var ctx=new AC();
+    if(ctx.state==='suspended'&&ctx.resume){var r=ctx.resume();if(r&&r.catch)r.catch(function(){});}
+    var src=ctx.createMediaElementSource(document.getElementById('audioEl'));
+    var g=ctx.createGain();
+    src.connect(g);g.connect(ctx.destination);
+    _waCtx=ctx;_waGain=g;
+    return true;
+  }catch(e){_waFailed=true;return false;}
+}
+function _applyGain(vol){
+  try{
+    if(_waCtx&&_waCtx.state==='suspended'&&_waCtx.resume){var r=_waCtx.resume();if(r&&r.catch)r.catch(function(){});}
+    if(_waGain)_waGain.gain.value=vol/100;
+  }catch(e){}
+}
 function setVolume(v){
   var au=document.getElementById('audioEl');
   var vol=Math.max(0,Math.min(100,parseInt(v,10)||0));
-  au.volume=vol/100;
-  au.muted=false;
+  au.volume=vol/100;          // effective everywhere except iOS; harmless there
+  au.muted=false;             // muted is programmable on iOS too — keep the pair honest
+  // PASS 22 (§3): oninput is a user gesture — the graph may be built (and
+  // the context resumed) right here, which is what makes the gain path
+  // legal on iOS. Non-iOS never enters this branch.
+  if(_isiOSFamily&&_gainPathOK())_applyGain(vol);
   try{localStorage.setItem('wsx_volume',String(vol));}catch(e){}
   _updateVolIcon(vol);
 }
@@ -5983,7 +6047,9 @@ function toggleAppsSelMode(){
 function dlApk(pkg,name,skipRegister){
   var safeName=(name||pkg).replace(/[^a-zA-Z0-9_\-]/g,'_')+'.apk';
   if(!skipRegister)_registerPendingDownloads([{key:'pkg',value:pkg}]);
-  _queueDownload('/api/apps/download?pkg='+enc(pkg),safeName);
+  // PASS 22 (§1): same one-at-a-time pump as every other plain download.
+  if(_legacyIOS){_queueDownload('/api/apps/download?pkg='+enc(pkg),safeName);return;}
+  _dlPumpEnqueue('/api/apps/download?pkg='+enc(pkg),safeName);
 }
 // ═══════════════════════════════════════════════
 // FILE BROWSER
@@ -7750,6 +7816,136 @@ function _qsPumpHeldCount(){
   for(var kk in _qsPumpHeld){n++;}
   return n;
 }
+// ── PASS 22 (§1) — the PLAIN download pump (media-tab files & APKs) ────────
+// dlSelected/dlFile/dlApk used to fire every <a download> within ~360ms and
+// forget them; the browser's per-origin socket pool (shared with the SSE
+// stream, state polls, tiles and any video being PLAYED) silently dropped
+// the queued dispatches, and nothing on either side ever noticed — the
+// audited "videos permanently stuck in Waiting" root cause. Every plain
+// download now dispatches through this one-at-a-time pump: the next request
+// fires only after the current row reaches a genuine terminal state, a
+// dropped dispatch is detected (rq===false) and freed, and a zero-byte
+// failure gets exactly one bounded re-fire. Legacy iOS keeps its own
+// one-at-a-time receive pump (the iframe handoff path) — unchanged.
+var _dlPumpQ=[];                      // FIFO of {url,name}
+var _dlPumpSlots={};                  // url -> {at:ms,done:bool,name:...}
+var _dlPumpHeld={};                   // Pass-22: paused-before-dispatch items
+var _dlPumpRetry={};                  // url -> tries (bounded zero-byte re-fire)
+var _dlPumpWatch=null;                // fallback ticker
+var _DL_PUMP_WINDOW=1;                // matches the host gate's pinned 1
+var _DL_PUMP_SWALLOWED_MS=8000;       // rq===false → the browser dropped it
+var _DL_PUMP_PENDING_RELEASE_MS=300000;  // rq true, gate-parked (legit wait)
+var _DL_PUMP_MISSING_RELEASE_MS=6000;    // row gone past snapshot cadence
+var _DL_PUMP_MAX_RETRY=1;             // exactly one re-fire for a dropped dispatch
+function _dlPumpEnqueue(url,name,front){
+  var i;
+  for(i=0;i<_dlPumpQ.length;i++)if(_dlPumpQ[i].url===url)return;  // exactly-once per url
+  if(_dlPumpSlots[url]||_dlPumpHeld[url])return;
+  if(front)_dlPumpQ.unshift({url:url,name:name});
+  else _dlPumpQ.push({url:url,name:name});
+  _dlPumpTick();
+}
+function _dlPumpFindRow(name){
+  // Same name-match the QS pump uses; the pump's OWN identity stays the
+  // (unique) URL, the row lookup only resolves state.
+  for(var i=0;i<XFER.order.length;i++){
+    var r=XFER.items[XFER.order[i]];
+    if(r&&r.dir!=='up'&&r.name===name)return r;
+  }
+  return null;
+}
+function _dlPumpActiveCount(){
+  var n=0;
+  for(var k in _dlPumpSlots){if(!_dlPumpSlots[k].done)n++;}
+  return n;
+}
+function _dlPumpTick(){
+  if(_legacyIOS)return;                  // the legacy receive pump owns dispatch there
+  var now=Date.now(),k,row;
+  // (0) a paused dispatched row is not a batch turn — release its slot
+  // (the pause parks the server-side request; its resume belongs to the
+  // host's Resume / the DM's own re-request, never a fresh dispatch).
+  for(k in _dlPumpSlots){
+    row=_dlPumpFindRow(_dlPumpSlots[k].name);
+    if(row&&row.pd&&!_dlPumpSlots[k].done)_dlPumpSlots[k].done=true;
+  }
+  // (0b) a paused QUEUED item holds out of the queue until the pause lifts.
+  for(var qi=_dlPumpQ.length-1;qi>=0;qi--){
+    var qn=_dlPumpQ[qi];
+    if(_dlPumpSlots[qn.url])continue;
+    var qr=_dlPumpFindRow(qn.name);
+    if(qr&&qr.pd){
+      _dlPumpQ.splice(qi,1);
+      _dlPumpHeld[qn.url]={name:qn.name};
+    }
+  }
+  for(var hk in _dlPumpHeld){
+    var hr=_dlPumpFindRow(_dlPumpHeld[hk].name);
+    if(!hr||!hr.pd){
+      _dlPumpQ.unshift({url:hk,name:_dlPumpHeld[hk].name});
+      delete _dlPumpHeld[hk];
+    }
+  }
+  // (1) release slots on genuine decisions — the same three safety exits
+  //     as the QS pump (terminal / swallowed / parked / gone).
+  for(k in _dlPumpSlots){
+    var st=_dlPumpSlots[k];
+    if(st.done)continue;
+    row=_dlPumpFindRow(st.name);
+    if(row){
+      if(row.state==='completed'||row.state==='cancelled')st.done=true;
+      else if(row.state==='failed'){
+        if((row.received||0)>0&&row.tid){
+          // interrupted-with-bytes: rests resumable — the browser's own
+          // download manager owns the continuation; the slot frees so the
+          // batch keeps flowing (the row keeps its honest state).
+          st.done=true;
+        }else{
+          // zero-byte failure = the dropped-dispatch shape: ONE bounded
+          // re-fire, then the slot frees either way.
+          st.done=true;
+          if((_dlPumpRetry[k]||0)<_DL_PUMP_MAX_RETRY){
+            _dlPumpRetry[k]=(_dlPumpRetry[k]||0)+1;
+            (function(u,n){setTimeout(function(){
+              try{console.info('DL pump: re-firing "'+n+'" — its dispatch was dropped (zero-byte failure)');}catch(e2){}
+              _dlPumpEnqueue(u,n,true);
+            },400);})(k,st.name);
+          }
+        }
+      }
+      else if(row.state==='pending'){
+        st.fullAt=0;
+        if((row.received||0)===0){
+          if(row.rq===false&&now-st.at>_DL_PUMP_SWALLOWED_MS){
+            st.done=true;
+            try{console.info('DL pump: dispatch slot for "'+st.name+'" freed — no byte-request ever arrived (swallowed dispatch)');}catch(e2){}
+          }else if(now-st.at>_DL_PUMP_PENDING_RELEASE_MS){
+            st.done=true;
+          }
+        }
+      }
+    }else if(now-st.at>_DL_PUMP_MISSING_RELEASE_MS){
+      st.done=true;
+    }
+  }
+  for(k in _dlPumpSlots){if(_dlPumpSlots[k].done)delete _dlPumpSlots[k];}
+  // (2) refill strictly in queue order.
+  while(_dlPumpQ.length>0&&_dlPumpActiveCount()<_DL_PUMP_WINDOW){
+    var nxt=_dlPumpQ.shift();
+    if(_dlPumpSlots[nxt.url])continue;
+    _dlPumpSlots[nxt.url]={at:now,done:false,name:nxt.name};
+    try{_directDownload(nxt.url,nxt.name);}catch(e){delete _dlPumpSlots[nxt.url];}
+  }
+  // (3) fallback ticker while work remains (snapshots drive the fast path).
+  if(_dlPumpQ.length>0||_dlPumpActiveCount()>0){
+    var heldN=0;for(var h2 in _dlPumpHeld)heldN++;
+    if(heldN>0)_dlPumpTickSoon();
+  }
+  if(_dlPumpQ.length>0||_dlPumpActiveCount()>0||(function(){var n=0;for(var h3 in _dlPumpHeld)n++;return n;})()){
+    if(!_dlPumpWatch)_dlPumpWatch=setTimeout(function(){_dlPumpWatch=null;_dlPumpTick();},1200);
+  }
+}
+function _dlPumpTickSoon(){if(!_dlPumpWatch)_dlPumpWatch=setTimeout(function(){_dlPumpWatch=null;_dlPumpTick();},1200);}
 // GOAT-PASS 6 (§3): pending pause-lift watches keep the fallback ticker alive —
 // the watch window must be able to elapse (and fire its re-dispatch) even if
 // no snapshot happens to arrive inside it.
@@ -8553,6 +8749,7 @@ function _handleQStateNow(d){
   // slots and the next queued item starts within one snapshot cadence
   // (SSE ~250ms / XHR fallback 700ms) of the previous item finishing.
   try{_qsPumpTick();}catch(e){}
+  try{_dlPumpTick();}catch(e){}
   if(d.v!==_lastStateV){
     _lastStateV=d.v;
     if(d.qc===0){
@@ -10581,7 +10778,9 @@ function xfersApply(list){
   // any queued-but-undispatched siblings moving — see
   // _xferAutoReconnect_RETIRED for the full design note.
   xferSync();
-}
+
+  // PASS 22 (§1): every applied snapshot drives the plain pump too.
+  try{_dlPumpTick();}catch(e){}}
 
 // Post-v1.0 (§previewer-instant-dismiss) → RETIRED in Pass-13: the two
 // batch-purge helpers (_xferPurgeCompleted / _xferPurgeDecided) and the
@@ -11119,6 +11318,7 @@ function xferCancelKey(k){
       // cancelled one resolves (the server-side cancel already handed the
       // queue permit back synchronously).
       try{_qsPumpTick();}catch(e4){}
+      try{_dlPumpTick();}catch(e4){}
     }).catch(function(){/* keep honest "Cancelling…" — 8s fallback resolves */});
     xferSync();
     return;

@@ -5344,6 +5344,13 @@ object TransferManager {
      *  second or two) yet short enough that a dropped dispatch self-heals
      *  before a human gives up on it. */
     private const val NEVER_REQUESTED_TIMEOUT_MS = 25_000L
+    /** PASS 22 §1: plain (media-tab) pre-registered downloads — never-
+     *  requested liveness with a quiet window sized above the legacy iOS
+     *  receive pump's inter-item turnaround (see the sweep's doc). Read
+     *  PER SWEEP PASS (not captured at class init) so the test seam
+     *  property is honored whenever it is set. */
+    internal fun plainNeverRequestedTimeoutMs(): Long =
+        System.getProperty("ldx.test.plainNeverRequestedMs")?.toLongOrNull() ?: 45_000L
     private const val STALE_PENDING_TIMEOUT_MS = 5 * 60_000L
 
     /** Sweeps PENDING entries old enough to be considered abandoned (see
@@ -5453,6 +5460,41 @@ object TransferManager {
                     (now - (peerLastDownloadActivity[it.peerIp] ?: 0L)) > NEVER_REQUESTED_TIMEOUT_MS
             }.groupBy { it.peerIp }
             for ((_, rows) in candidates) {
+                val oldest = rows.minByOrNull { it.startedAt } ?: continue
+                oldest.status = Status.FAILED
+                oldest.finishedAt = now
+                prioritized.remove(oldest.id)
+                scheduleAutoRemoval(oldest.id, FAILED_DOWNLOAD_LINGER_MS)
+                touch(oldest.peerIp)
+            }
+            // ── PASS 22 (§1.4 — plain-download twin of the never-requested ──
+            // sweep): a PLAIN row is created ONLY by /api/download/register,
+            // which the page fires in the same breath as its <a download>
+            // dispatches (dlSelected/dlFile/dlApk) — there is NO undecided-
+            // offer state for plain downloads (the QS exemption's whole
+            // reason), so a never-requested PLAIN row is ALWAYS a dropped
+            // dispatch. The one deliberate exception is the legacy iOS
+            // receive pump: it registers a whole selection up front but
+            // dispatches one iframe at a time, so its queued tail is
+            // legitimately unrequested while earlier items stream — and the
+            // peer-activity stamp those streams keep refreshing exempts it.
+            // The quiet window (45s, vs the QS 25s) is sized above that
+            // pump's every inter-item gap with margin; total peer silence
+            // for 45s means the batch is genuinely gone. rq is deliberately
+            // NOT consulted: a row whose request ARRIVED but died parked at
+            // the gate (browser dropped the stalled connection) has
+            // requestedAtMs > 0 and is exactly the same wedge — the claim
+            // only ever happens after gate admission, which a dead socket
+            // can never complete.
+            val plainCandidates = transfers.values.filter {
+                it.status == Status.PENDING && it.direction == Direction.DOWNLOAD &&
+                    it.source == Source.PLAIN && !it.pauseRequested && !it.isTextMessage &&
+                    it.requestedAtMs == 0L &&
+                    it.peerIp !in peerHasLiveWork &&
+                    (now - it.startedAt) > plainNeverRequestedTimeoutMs() &&
+                    (now - (peerLastDownloadActivity[it.peerIp] ?: 0L)) > plainNeverRequestedTimeoutMs()
+            }.groupBy { it.peerIp }
+            for ((_, rows) in plainCandidates) {
                 val oldest = rows.minByOrNull { it.startedAt } ?: continue
                 oldest.status = Status.FAILED
                 oldest.finishedAt = now
