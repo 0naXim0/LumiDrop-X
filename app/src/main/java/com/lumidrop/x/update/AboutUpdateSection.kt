@@ -59,6 +59,39 @@ import com.lumidrop.x.update.UpdateManager.State
  */
 object AboutUpdateSection {
 
+    // ── PASS 23 §7: the state→action contract, as ONE pure function ────────
+    // (single source of truth for what the primary button IS and DOES —
+    // render() paints it, onPrimary() executes it, and the JVM battery
+    // pins it, including the Pass-23 fix: every install-shaped state
+    // retries the INSTALLATION with the already-downloaded APK, never a
+    // re-download).
+
+    /** What the ONE primary action does for a phase. */
+    enum class ActionKind { CHECK, DOWNLOAD, CANCEL_DOWNLOAD, INSTALL, GRANT_PERMISSION, NONE }
+
+    data class PrimaryAction(val kind: ActionKind, val label: String, val enabled: Boolean)
+
+    fun primaryAction(phase: Phase, releaseKnown: Boolean): PrimaryAction = when (phase) {
+        Phase.CHECKING, Phase.VERIFYING, Phase.DOWNLOAD_COMPLETE ->
+            PrimaryAction(ActionKind.NONE, "Working\u2026", false)
+        Phase.FINALIZING -> PrimaryAction(ActionKind.NONE, "Finishing\u2026", false)
+        Phase.UP_TO_DATE, Phase.IDLE, Phase.UPDATE_INSTALLED, Phase.VERIFIED ->
+            PrimaryAction(ActionKind.CHECK, "Check for Updates", true)
+        Phase.CHECK_FAILED -> PrimaryAction(ActionKind.CHECK, "Check for Updates", true)
+        Phase.UPDATE_AVAILABLE -> PrimaryAction(ActionKind.DOWNLOAD, "Download Update", true)
+        Phase.DOWNLOADING -> PrimaryAction(ActionKind.CANCEL_DOWNLOAD, "Cancel Download", true)
+        Phase.DOWNLOAD_FAILED, Phase.VERIFY_FAILED ->
+            PrimaryAction(ActionKind.DOWNLOAD, "Retry Download", releaseKnown)
+        Phase.READY_TO_INSTALL -> PrimaryAction(ActionKind.INSTALL, "Install Update", true)
+        Phase.INSTALL_PERMISSION_REQUIRED ->
+            PrimaryAction(ActionKind.GRANT_PERMISSION, "Grant Permission", true)
+        Phase.INSTALL_PENDING -> PrimaryAction(ActionKind.NONE, "Waiting for Installer\u2026", false)
+        // §7 critical rule: a downloaded APK keeps offering INSTALL — the
+        // Pass-22 wiring made these two re-download the same release.
+        Phase.INSTALL_CANCELLED -> PrimaryAction(ActionKind.INSTALL, "Retry Install", releaseKnown)
+        Phase.INSTALL_FAILED -> PrimaryAction(ActionKind.INSTALL, "Retry Install", true)
+    }
+
     fun build(
         ctx: Context,
         dp: (Int) -> Int,
@@ -67,8 +100,9 @@ object AboutUpdateSection {
         onCheckNow: (manual: Boolean) -> Unit,
         onDownload: (Release) -> Unit,
         onCancelDownload: () -> Unit,
-        onInstall: (Release) -> Unit
-    ): Section = Section(ctx, dp, col, mount, onCheckNow, onDownload, onCancelDownload, onInstall)
+        onInstall: (Release) -> Unit,
+        onResumeFlow: () -> Unit
+    ): Section = Section(ctx, dp, col, mount, onCheckNow, onDownload, onCancelDownload, onInstall, onResumeFlow)
 
     class Section(
         private val ctx: Context,
@@ -78,7 +112,8 @@ object AboutUpdateSection {
         private val onCheckNow: (Boolean) -> Unit,
         private val onDownload: (Release) -> Unit,
         private val onCancelDownload: () -> Unit,
-        private val onInstall: (Release) -> Unit
+        private val onInstall: (Release) -> Unit,
+        private val onResumeFlow: () -> Unit
     ) {
         private val main = Handler(Looper.getMainLooper())
         private lateinit var card: LinearLayout
@@ -347,26 +382,20 @@ object AboutUpdateSection {
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT).also { it.topMargin = dp(4) }
         }
 
-        /** §3.2: THE single primary action, resolved from the state. */
+        /** §3.2/§7: THE single primary action, executed through the pure
+         *  [primaryAction] contract (same table render() paints from —
+         *  PASS 23: INSTALL-shaped states retry the INSTALLATION with the
+         *  already-downloaded APK, never a re-download). */
         private fun onPrimary() {
             val st = UpdateManager.state
-            when (st.phase) {
-                Phase.UPDATE_AVAILABLE -> st.availableRelease?.let(onDownload)
-                Phase.DOWNLOADING, Phase.FINALIZING -> onCancelDownload()
-                Phase.INSTALL_PERMISSION_REQUIRED -> {
-                    // §9.1.4: open the OS grant page; the flow resumes on
-                    // return (onResume re-renders; the apk is still there)
-                    UpdateManager.openInstallPermissionSettings(ctx)
-                }
-                Phase.READY_TO_INSTALL -> st.availableRelease?.let(onInstall)
-                Phase.VERIFY_FAILED, Phase.DOWNLOAD_FAILED,
-                Phase.CHECK_FAILED, Phase.INSTALL_CANCELLED, Phase.INSTALL_FAILED -> {
-                    if (st.availableRelease != null && st.phase != Phase.CHECK_FAILED) {
-                        // the offer stands — retry the download
-                        st.availableRelease?.let(onDownload)
-                    } else onCheckNow(true)
-                }
-                else -> onCheckNow(true)
+            val action = primaryAction(st.phase, st.availableRelease != null)
+            when (action.kind) {
+                ActionKind.CHECK -> onCheckNow(true)
+                ActionKind.DOWNLOAD -> st.availableRelease?.let(onDownload)
+                ActionKind.CANCEL_DOWNLOAD -> onCancelDownload()
+                ActionKind.INSTALL -> st.availableRelease?.let(onInstall)
+                ActionKind.GRANT_PERMISSION -> UpdateManager.openInstallPermissionSettings(ctx)
+                ActionKind.NONE -> { /* busy — nothing to do */ }
             }
         }
 
@@ -381,9 +410,14 @@ object AboutUpdateSection {
                 Phase.CHECKING -> "Checking for updates\u2026"
                 Phase.UP_TO_DATE -> if (st.message.isNotEmpty()) st.message
                     else if (installed.isNotEmpty()) "LumiDrop X is up to date (version $installed)." else ""
-                Phase.UPDATE_AVAILABLE ->
-                    if (rel != null) "Version ${rel.version} is available (you have ${if (installed.isEmpty()) "?" else installed})."
+                Phase.UPDATE_AVAILABLE -> {
+                    val base = if (rel != null)
+                        "Version ${rel.version} is available (you have ${if (installed.isEmpty()) "?" else installed})."
                     else "A new version is available."
+                    // §7 "Download interrupted": a preserved partial is told
+                    // to the user (restore/verify paths set the message).
+                    if (st.message.isNotEmpty()) "$base\n${st.message}" else base
+                }
                 Phase.DOWNLOADING ->
                     if (st.totalBytes > 0) "Downloading ${rel?.version} \u2014 ${fmt(st.progressBytes)} of ${fmt(st.totalBytes)}"
                     else "Downloading ${rel?.version} \u2014 ${fmt(st.progressBytes)}"
@@ -396,10 +430,17 @@ object AboutUpdateSection {
                 Phase.INSTALL_PERMISSION_REQUIRED -> st.message.ifEmpty {
                     "Android needs your permission to let LumiDrop X install updates." }
                 Phase.INSTALL_PENDING -> "The system installer is open \u2014 confirm the update there to finish."
-                Phase.INSTALL_CANCELLED -> "Installation was cancelled \u2014 your current version is untouched. You can retry any time."
-                Phase.INSTALL_FAILED -> "The installation could not start.\n${st.message}"
+                Phase.INSTALL_CANCELLED -> st.message.ifEmpty {
+                    "Installation was cancelled \u2014 your current version is untouched. The downloaded update is still ready to install." }
+                Phase.INSTALL_FAILED -> st.message.ifEmpty {
+                    "The installation could not start.\nAndroid could not open the installer. Your downloaded update is preserved \u2014 try installation again." }
                 Phase.UPDATE_INSTALLED -> st.message.ifEmpty { "Updated to $installed." }
-                Phase.CHECK_FAILED -> "Update check failed.\n${st.message}"
+                Phase.CHECK_FAILED -> {
+                    // §7: the network failure is reported WITHOUT erasing the
+                    // cached release information the user already has.
+                    val kept = if (rel != null) "\nYour previously discovered update (version ${rel.version}) is still available." else ""
+                    "Update check failed.\n${st.message}$kept"
+                }
                 Phase.DOWNLOAD_FAILED -> "Download failed.\n${st.message}"
             }
 
@@ -451,30 +492,18 @@ object AboutUpdateSection {
                 })
             }
 
-            // ONE primary action (§3.2 table) — label, enabled, behavior
-            val (label, enabled) = when (st.phase) {
-                Phase.CHECKING, Phase.VERIFYING, Phase.DOWNLOAD_COMPLETE -> "Working\u2026" to false
-                Phase.FINALIZING -> "Finishing\u2026" to false
-                Phase.UP_TO_DATE, Phase.IDLE, Phase.UPDATE_INSTALLED,
-                Phase.CHECK_FAILED, Phase.VERIFIED -> "Check for Updates" to true
-                Phase.UPDATE_AVAILABLE -> "Download Update" to true
-                Phase.DOWNLOADING -> "Cancel Download" to true
-                Phase.DOWNLOAD_FAILED, Phase.VERIFY_FAILED -> "Retry Download" to (rel != null)
-                Phase.READY_TO_INSTALL -> "Install Update" to true
-                Phase.INSTALL_PERMISSION_REQUIRED -> "Grant Permission" to true
-                Phase.INSTALL_PENDING -> "Waiting for Installer\u2026" to false
-                Phase.INSTALL_CANCELLED -> "Retry Install" to (rel != null)
-                Phase.INSTALL_FAILED -> "Retry Install" to true
-            }
-            actionBtn.text = label
-            actionBtn.isEnabled = enabled
-            actionBtn.alpha = if (enabled) 1f else 0.55f
+            // ONE primary action (§3.2 table) — label, enabled, behavior all
+            // come from the SAME pure contract onPrimary() executes (§7).
+            val action = primaryAction(st.phase, rel != null)
+            actionBtn.text = action.label
+            actionBtn.isEnabled = action.enabled
+            actionBtn.alpha = if (action.enabled) 1f else 0.55f
             actionBtn.background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = ctx.dpf(12f)
-                if (enabled) setColor(col(R.color.accent))
+                if (action.enabled) setColor(col(R.color.accent))
                 else setColor(col(R.color.bg_secondary))
             }
-            actionBtn.setTextColor(if (enabled) 0xFFF8FAFC.toInt() else col(R.color.text_muted))
+            actionBtn.setTextColor(if (action.enabled) 0xFFF8FAFC.toInt() else col(R.color.text_muted))
 
             // last-checked footnote
             val lastAt = ReleaseModel.prefs(ctx).getLong("last_check_at", 0L)
@@ -487,20 +516,13 @@ object AboutUpdateSection {
         }
 
         fun onResume() {
-            // §9.1.9/§5.2: coming back — reconcile the install outcome first
-            UpdateManager.reconcileAfterRestart(ctx)
-            val prefs = ReleaseModel.prefs(ctx)
-            val busy = UpdateManager.isOperationInFlight() ||
-                UpdateManager.state.phase in setOf(Phase.DOWNLOADING, Phase.FINALIZING,
-                    Phase.VERIFYING, Phase.INSTALL_PENDING)
-            if (ReleaseModel.shouldAutoCheck(
-                    prefs.getBoolean("auto_check_enabled", true),
-                    prefs.getLong("last_check_at", 0L),
-                    System.currentTimeMillis(), busy)) {
-                onCheckNow(false)
-            } else {
-                render()
-            }
+            // PASS 23 §5/§8: one entry point — UpdateManager.resumeFlow runs
+            // restore-from-snapshot, install-outcome reconciliation and the
+            // paced (24h, toggle-respecting) auto-check as ONE guarded
+            // pipeline off the UI thread. The section no longer duplicates
+            // any of that logic (§10: one source of truth); rendering stays
+            // listener-driven.
+            onResumeFlow()
         }
 
         private fun dp2f(): Float = ctx.resources.displayMetrics.density * 2f

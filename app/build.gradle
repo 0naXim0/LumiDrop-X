@@ -467,8 +467,55 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 94
+        versionCode 95
         versionName "1.0.4"
+        // ── PRODUCTION FINAL PASS 23 (versionCode 95 — versionName 1.0.4, ══
+        // updater reconstruction; versionName intentionally UNCHANGED per the
+        // pass brief §17 — this is an updater repair, not a feature release.
+        // versionCode MUST rise above 94 because the v1.0.4 GitHub release
+        // currently serves the Pass-22 vC94 APK: Android refuses same-code
+        // "updates", and this app's own verifier refuses apkCode <=
+        // installedCode — devices already running the vC94 test build could
+        // never receive these fixes otherwise. The fixed vC95 APK is a
+        // drop-in replacement for the release asset, so every path upgrades:
+        // 1.0.3/vC93 → 1.0.4/vC95 (the normal flow), and vC94-test → vC95.)
+        // ROOT CAUSES fixed this pass (all audited in the Pass-22 source):
+        //  (A) INSTALL FAILURE — res/xml/file_paths.xml had NO root covering
+        //      cacheDir/updates/, so FileProvider.getUriForFile threw "Failed
+        //      to find configured root that contains /data/data/com.lumidrop.x
+        //      /cache/updates/lumidrop-update-v1.0.4.apk" AFTER a perfectly
+        //      good download. Added <cache-path name="updates" path="updates/"
+        //      /> — the grant surface stays exactly one installer-readable
+        //      APK per update; launchInstall now pre-flights URI generation
+        //      and never claims success unless the intent really launched.
+        //  (B) HTTP 416 PERMANENT FAILURE — a complete staged APK made every
+        //      Download press ask Range: bytes=<fullsize>-; the 416 was
+        //      treated as a dead network and the same impossible range was
+        //      re-issued forever. The new DownloadEngine interrogates the
+        //      416's Content-Range total vs the file's REAL length: complete
+        //      file → straight to verification (zero network); invalid
+        //      offset → discard only the bad bytes and restart — bounded
+        //      (never looping), partial-preserving.
+        //  (C) REDOWNLOADS — download() now validates an on-disk file that
+        //      matches the release asset BEFORE dialing; a validated APK is
+        //      reused, retrying INSTALLATION never re-downloads.
+        //  (D) DISCOVERY LOST ON RESTART — the discovered release, download
+        //      state and ready/pending flags persist (UpdateStore snapshot)
+        //      and resumeFlow() restores them on every About resume; a
+        //      failed check never erases the cached offer.
+        //  (E) "Retry Install" RE-DOWNLOADED — the primary-action table now
+        //      maps every install-shaped state to the installer handoff.
+        //  (F) RESTART DELETED THE VALID APK — cleanup keep-rules now consult
+        //      the persisted snapshot, not just in-memory state.
+        //  (G) published SHA-256 (notes convention) is now actually enforced.
+        //  (H) bounded exponential-backoff retries for 429/5xx/timeouts/
+        //      resets; DNS failure fails instantly without hammering.
+        // New units: update/UpdatePolicy.kt (pure decision core),
+        // update/DownloadEngine.kt (context-free transport lifecycle),
+        // update/UpdateStore.kt (snapshot persistence); rewritten
+        // update/UpdateManager.kt + AboutUpdateSection; JVM battery
+        // Pass23UpdaterReconstructionTest covers the whole §15 matrix that
+        // does not need a device.
         // ── PRODUCTION FINAL PASS 22 (versionCode 94 — versionName 1.0.4): ══
         // Video-queue Waiting fix + first-open latency + iOS volume. ROOT
         // CAUSE of "played videos stuck in Waiting" (audited, real): the

@@ -30,6 +30,23 @@
          grantUriPermissions=true, so a Uri only works while this app
          explicitly grants FLAG_GRANT_READ_URI_PERMISSION per intent. -->
     <root-path name="storage" path="/storage/" />
+    <!-- ── PRODUCTION FINAL PASS 23 (§2 — Critical Issue A): the UPDATER's ──
+         staged APK root. The updater downloads release APKs to
+         getCacheDir()/updates/ (app-private, no permissions, purgeable by
+         the OS under storage pressure) and hands them to Android's package
+         installer through this provider. Pass 22 shipped WITHOUT any root
+         covering cacheDir — the transfer-sharing roots above only map
+         external storage and /storage mounts — so FileProvider.getUriForFile
+         threw "Failed to find configured root that contains
+         /data/data/com.lumidrop.x/cache/updates/lumidrop-update-v1.0.4.apk"
+         and every installation launch failed AFTER a perfectly good
+         download (the exact real-device error). This entry maps ONLY the
+         updates/ subdirectory (path="updates/", name is arbitrary but must
+         stay stable — it appears in the generated content:// Uri), never
+         the whole cache dir: the grant surface stays exactly one
+         installer-readable APK per update, issued per-intent with
+         FLAG_GRANT_READ_URI_PERMISSION by the holder of the file. -->
+    <cache-path name="updates" path="updates/" />
     <!-- GOAT-PASS 13 (§10): the <files-path name="internal"> entry that used
          to sit here existed solely for the now-removed diagnostic log
          exports (AppLog/DiagLog/LogsActivity). Nothing else in the app

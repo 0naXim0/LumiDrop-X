@@ -1,11 +1,13 @@
 # Changelog
 
-## 1.0.4 (version code 94)
+## 1.0.4 (version code 95)
 
-- Fixed the video/download queue conflict so selected downloads progress one at a time without interfering with playback.
-- Added server-side cleanup for never-requested plain download rows and improved retry handling.
-- Improved first-open loading through server-start prewarming and cached document listing.
-- Added iOS-family music volume handling through a gesture-safe Web Audio fallback.
+- Fixed installer handoff by mapping staged update APKs through the internal cache FileProvider root.
+- Added robust HTTP 416 recovery, real on-disk resume offsets, bounded retries, and complete-file reuse.
+- Persisted discovered updates and ready-to-install state across process restarts.
+- Corrected failed/cancelled installation retries so preserved APKs use the install path instead of re-downloading.
+- Preserved the official signing identity for updates from v1.0.3 and earlier 1.0.4 builds.
+
 
 ## 1.0.3 (version code 93)
 

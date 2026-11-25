@@ -603,6 +603,14 @@ class SettingsFragment : Fragment() {
                         st.message.ifEmpty { "The installer could not be opened" },
                         android.widget.Toast.LENGTH_LONG).show()
                 }
+            },
+            // PASS 23 §5/§8: the About-onResume pipeline — restore the
+            // persisted discovery, reconcile the install outcome, run the
+            // paced auto-check. One guarded background pass, one state owner.
+            onResumeFlow = {
+                Thread {
+                    com.lumidrop.x.update.UpdateManager.resumeFlow(ctx)
+                }.start()
             }
         )
         sectionRef = aboutSection
