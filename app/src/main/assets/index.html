@@ -416,7 +416,7 @@ body:not(.sb-full) .store-track{margin-bottom:0}
   border-radius:7px;overflow:hidden;background:var(--bg3);position:relative}
 .file-thumb-wrap img{position:absolute;top:0;left:0;width:100%;height:100%;
   -o-object-fit:cover;object-fit:cover}
-.file-icon-box{width:42px;height:42px;border-radius:7px;background:var(--bg3);
+.file-icon-box{width:42px;height:42px;border-radius:7px;background:var(--bg3);position:relative; /* PASS 24: ::after selection ring anchor */
   display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;
   -webkit-justify-content:center;justify-content:center;-webkit-flex-shrink:0;flex-shrink:0;font-size:20px}
 .file-details{-webkit-flex:1;flex:1;min-width:0}
@@ -441,10 +441,11 @@ body:not(.sb-full) .store-track{margin-bottom:0}
   font-size:10px;color:#fff;background:-webkit-linear-gradient(transparent,rgba(0,0,0,.65));
   background:linear-gradient(transparent,rgba(0,0,0,.65));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.grid-cell.sel::after{content:'\2713';position:absolute;top:4px;right:4px;
-  width:18px;height:18px;background:var(--acc);border-radius:50%;
-  display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;
-  -webkit-justify-content:center;justify-content:center;font-size:10px;color:#fff;font-weight:700}
+/* PASS 24: the old .grid-cell.sel::after check badge (an 18px check circle
+   painted ON the cell's thumbnail/icon corner) is REMOVED — the unified
+   thin-ring treatment lives in the PASS 24 selection block above. The
+   grid-cell's own .sel ring draws there; nothing is painted on the cell's
+   content anymore. */
 /* Media pages */
 .pg-media{padding:12px}
 .album-scroll{display:-webkit-flex;display:flex;gap:8px;overflow-x:auto;
@@ -523,14 +524,46 @@ body:not(.sb-full) .store-track{margin-bottom:0}
 .img-cell-inner{position:relative;width:100%;height:0;padding-bottom:100%;overflow:hidden}
 .img-cell-inner img{position:absolute;top:0;left:0;width:100%;height:100%;
   -o-object-fit:cover;object-fit:cover}
-.img-cell.sel::after{content:'\2713';position:absolute;top:4px;right:4px;
-  width:18px;height:18px;background:var(--acc);border-radius:50%;
-  display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;
-  -webkit-justify-content:center;justify-content:center;font-size:10px;color:#fff;font-weight:700}
-.sel-mode .img-cell::before{content:'';position:absolute;top:4px;right:4px;
-  width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.35);
-  border:1.5px solid rgba(255,255,255,.55);z-index:1}
-.img-cell.sel::before{display:none}
+/* ══ PASS 24 — the unified selection treatment ══════════════════════════
+   Root cause of the reported problem: grid cells drew an 18px check badge
+   ON the thumbnail corner (.sel::after) plus a dark circle on EVERY cell
+   in selection mode (.sel-mode .img-cell::before) — a corner of the
+   actual photo was covered, so with visually similar images the user
+   could not tell WHICH one was selected. Rows had no thumbnail treatment
+   at all (container tint + a check column only), and Music rows had no
+   container tint either.
+
+   The new language — one system for every surface: the original thumbnail
+   or icon is NEVER replaced or covered; selection is a THIN 2px accent
+   ring that hugs the thumbnail container's own corner radius (7px), drawn
+   as an absolutely-positioned pointer-transparent overlay:
+   - no layout shift (overlay is out of flow, border-box sized),
+   - paints above the image without touching it (pseudo-element is the
+     cell's last child, so it composites over the img),
+   - zero thumbnail reloads / zero re-renders (the same .sel class-toggle
+     zero-lag path as before — only the visuals moved from badges to ring),
+   - legacy WebKit safe (absolute positioning + border + border-radius,
+     no modern outline-radius assumptions),
+   - the old on-thumbnail badges are DELETED, not hidden. */
+.img-cell.sel::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;
+  border-radius:7px;border:2px solid var(--acc);pointer-events:none;
+  -webkit-box-sizing:border-box;box-sizing:border-box}
+/* PASS 24: .img-cell.sel::before / .sel-mode .img-cell::before (the dark
+   circle on every cell during selection mode) and the old ::after badge
+   (the check circle ON the thumbnail) are removed outright — the ring is
+   THE selection indicator; unselected cells carry no clutter. */
+.grid-cell.sel::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;
+  border-radius:7px;border:2px solid var(--acc);pointer-events:none;
+  -webkit-box-sizing:border-box;box-sizing:border-box}
+/* Row-type items (Files list/search, Videos, Docs, Apps): the SAME ring
+   around the row's own 42px/78px thumbnail or file-type icon box — the
+   two parts (container tint + thumbnail ring) read as one system. */
+.file-item.sel .file-thumb-wrap::after,
+.file-item.sel .file-icon-box::after,
+.media-row.sel .media-thumb::after,
+.media-row.sel .file-icon-box::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;
+  border-radius:7px;border:2px solid var(--acc);pointer-events:none;
+  -webkit-box-sizing:border-box;box-sizing:border-box}
 .sec-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;
   color:var(--txt3);padding:6px 2px;display:-webkit-flex;display:flex;
   -webkit-align-items:center;align-items:center;-webkit-justify-content:space-between;justify-content:space-between}
@@ -565,6 +598,14 @@ body:not(.sb-full) .store-track{margin-bottom:0}
   -webkit-transition:background .12s;transition:background .12s;margin-bottom:2px}
 .track-row:hover{background:var(--bg2)}
 .track-row.playing{background:rgba(145,114,246,.12)}
+/* PASS 24: Music rows join the unified container treatment — the same
+   subtle selected tint .file-item.sel and .media-row.sel already use.
+   Rows carry no artwork (the audio bar does), so for tracks the tint +
+   the dedicated check column + the accent check color ARE the selection
+   language. A row that is BOTH playing and selected takes this tint
+   (equal specificity, declared later) while every non-conflicting
+   .playing rule — the ♪ indicator and the accent track number — stays. */
+.track-row.sel{background:rgba(145,114,246,.1)}
 .track-num{width:24px;text-align:center;font-size:12px;color:var(--txt3);-webkit-flex-shrink:0;flex-shrink:0}
 .track-row.playing .track-num{color:var(--acc2)}
 .track-info{-webkit-flex:1;flex:1;min-width:0}

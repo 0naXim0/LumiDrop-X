@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 — version code 96
+
+- Published Production Final Pass 24.
+- Replaced thumbnail-covering selection badges with a consistent accent ring across image, file, media, and app surfaces.
+- Preserved thumbnail identity and selection state across filtering, sorting, virtualization, and rapid multi-selection.
+- Added the Pass-24 web-client regression harness covering selection synchronization and thumbnail preservation.
+- Maintained the existing signing identity for seamless updates from prior releases.
+
 ## 1.0.4 (version code 95)
 
 - Fixed installer handoff by mapping staged update APKs through the internal cache FileProvider root.

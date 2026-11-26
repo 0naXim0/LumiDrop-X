@@ -467,8 +467,43 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 95
-        versionName "1.0.4"
+        versionCode 96
+        versionName "1.0.5"
+        // ── PRODUCTION FINAL PASS 24 (versionCode 96 — versionName 1.0.5): ══
+        // Unified selection-mode refinement across the Web Client. ROOT
+        // CAUSE of "the thumbnail gets replaced with a checkmark" (audited,
+        // real): the selection indicator on the Images grid and the Files
+        // browsing grid was a CSS pseudo-element badge painted ON the
+        // thumbnail itself — `.img-cell.sel::after` / `.grid-cell.sel::after`
+        // drew an 18px purple check circle over the image corner, and
+        // `.sel-mode .img-cell::before` drew a dark circle on EVERY cell
+        // during selection mode — so a corner of the actual photo was
+        // covered and visually similar photos became indistinguishable
+        // while selecting. Secondary inconsistency (same audit): row-type
+        // items (Files list, Videos, Docs, Apps) had no thumbnail treatment
+        // at all (container tint + a dedicated check column only), and Music
+        // rows had no container tint either.
+        // THE FIX (CSS-only — zero DOM/JS changes: the zero-lag class-toggle
+        // architecture, the keyed/vl identity system, and every existing
+        // selection behavior are untouched): the on-thumbnail badges are
+        // DELETED (not hidden); one unified selection language across all
+        // seven selection surfaces — a thin 2px accent ring hugging each
+        // thumbnail/icon container's own 7px corner radius, drawn as an
+        // absolutely-positioned pointer-transparent overlay (no layout
+        // shift, no thumbnail reloads, legacy iOS 10.3 WebKit safe):
+        //   .img-cell.sel / .grid-cell.sel (Images + Files grids),
+        //   .file-item.sel .file-thumb-wrap / .file-icon-box (Files list +
+        //   storage-wide search results),
+        //   .media-row.sel .media-thumb / .file-icon-box (Videos, Docs,
+        //   Apps rows), plus .track-row.sel joining the unified container
+        // tint. The dedicated check columns (which occupy the action slot,
+        // never the thumbnail) and the container tints are retained.
+        // Verified: web harness p24.js 59/59 (thumbnail preservation,
+        // identity-keyed selection, counter sync, select-all/deselect-all,
+        // sort identity, rapid toggling, vl node reuse, zero thumbUrl
+        // re-requests during selection) + accept.js 18/18 + p22.js 22/22
+        // regressions green; audited-no-selection surfaces confirmed
+        // (Transfers Received/History tabs, native Android UI).
         // ── PRODUCTION FINAL PASS 23 (versionCode 95 — versionName 1.0.4, ══
         // updater reconstruction; versionName intentionally UNCHANGED per the
         // pass brief §17 — this is an updater repair, not a feature release.
