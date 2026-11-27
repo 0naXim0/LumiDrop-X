@@ -248,9 +248,14 @@ internal fun prewarmFilesSheetCache() {
  * every bit of that and replaces the selection layer:
  *
  *   • NO CHECK CIRCLES (#1): the icon slot is the selection target. FULL —
- *     accent chip with a white check; PARTIAL (folders only) — accent chip
- *     with a white dash; NONE — the normal glyph. The card's tint + stroke
- *     carry the same three states, nothing moves, nothing resizes.
+ *     thin 2dp accent ring over the intact thumbnail/glyph (PASS 25); PARTIAL
+ *     (folders only) — the quieter accent_light ring; NONE — no ring at all.
+ *     The slot's CONTENT never changes with the state — the thumbnail, format
+ *     glyph or folder glyph stays visible in every state — and the card's
+ *     tint + stroke carry the same three states, nothing moves, nothing
+ *     resizes. (The Pass-34/36 "accent check/dash chip" that replaced the
+ *     slot's content was the native twin of the on-thumbnail badge Pass 24
+ *     removed from the Web Client; PASS 25 retires it here too.)
  *   • HOLD-TO-SELECT + RANGE (#2): long-press selects the row and anchors it;
  *     a later long-press selects the whole inclusive span between anchor and
  *     target in the CURRENT visible+sorted order (both directions, hidden/
@@ -1108,27 +1113,50 @@ fun showFilesPickerSheet(
         init { setHasStableIds(true) }
         private fun rowsVisible(): Boolean = !loading && shown.isNotEmpty()
 
-        // ── SELECTION FINAL PASS 1 (§2C — the selection-only payload rebind). ──
+        // ── SELECTION FINAL PASS 1 (§2C — the selection-only payload rebind): ──
         // repaintStates used to dispatch notifyItemChanged WITHOUT a payload,
         // so every selection flip ran the FULL bind: name/meta text rewrites,
         // chevron re-wiring and — most expensively — a thumbnail-job cancel +
         // relaunch for the unselected side and a fresh GradientDrawable +
         // inflated vector glyph for the selected side, per flipped row, per
         // crossed Hold & Slide cell. The payload path below rebinds ONLY the
-        // selection chrome (card tint, stroke, chip/ glyph, chevron
-        // visibility); the thumbnail still flips to the chip when selected —
-        // that IS the selection visual — but nothing else on the row moves.
-        // The chip background and the check/dash glyphs are created ONCE per
-        // adapter and reused (constant tint; Widgets.icon already mutate()s),
-        // so a flip costs zero allocations and zero inflations.
+        // selection chrome (card tint, stroke, ring visibility, chevron
+        // visibility); the thumbnail is never touched by a selection flip at
+        // all anymore. The ring backgrounds are created ONCE per adapter and
+        // reused (constant tint), so a flip costs zero allocations.
+        //
+        // ── PASS 25 (the native half of the Pass-24 selection redesign, ────────
+        // completed): the icon slot's accent CHECK/DASH CHIP is RETIRED. The
+        // chip model — selected rows had their thumbnail/icon slot replaced
+        // wholesale by a solid-accent rounded square with a check (FULL) or
+        // dash (PARTIAL) glyph — was the exact native twin of the on-thumbnail
+        // badge the Web Client's Pass 24 deleted: the item's visual identity
+        // (its image thumbnail, format icon or folder glyph) vanished exactly
+        // while the user needed it most, mid-selection, and similar-looking
+        // items became indistinguishable. The slot's content is now STATE-
+        // INDEPENDENT — whatever the row shows unselected, it shows selected:
+        // the real thumbnail stays, the format glyph stays, the folder glyph
+        // stays, geometry (size, corner radius, scale type) unchanged.
+        // Selection is communicated by the SAME language the web client
+        // settled on: a thin 2dp accent ring drawn as an overlay ON TOP of
+        // the icon slot (rounded to the slot's own 8dp radius, transparent
+        // fill — it covers no content, changes no layout, intercepts no
+        // touch) plus the EXISTING container tint the card already carried.
+        // FULL = solid-accent ring; PARTIAL = the quieter accent_light ring
+        // at 66 alpha — the same family contrast the card tints already draw
+        // between the two states, so the in-between verdict stays readable
+        // with the folder's own glyph fully visible inside it.
         val SelStatePayload = Any()
-        val selChipBg = GradientDrawable().apply {
+        val selRingFull = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = ctx.dpf(8f)
-            setColor(col(R.color.accent))
+            setStroke(ctx.dp(2), col(R.color.accent))
         }
-        val selCheckIcon = Widgets.icon(ctx, R.drawable.ic_check, col(R.color.text_primary))
-        val selDashIcon = Widgets.icon(ctx, R.drawable.ic_dash, col(R.color.text_primary))
+        val selRingPartial = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = ctx.dpf(8f)
+            setStroke(ctx.dp(2), (col(R.color.accent_light) and 0x00FFFFFF) or 0x66000000)
+        }
 
         fun bindSelectionChrome(holder: RecyclerView.ViewHolder, rIn: Row) {
             // ── FULL FINAL PASS 2 (§2 — the LIVE model is the paint authority). ──
@@ -1150,10 +1178,14 @@ fun showFilesPickerSheet(
             val liveState = if (rIn.entry.isDir) folderState(rIn.entry.file) else fileState(rIn.entry.file)
             val r = if (liveState == rIn.state) rIn else Row(rIn.entry, liveState, rIn.pinned)
             val row = holder.itemView as LinearLayout
-            val icon = row.getChildAt(0) as ImageView
+            // ── PASS 25: the icon slot is now a FRAME (icon + ring overlay), ──
+            // so child 0 resolves the frame and the icon/ring live inside it.
+            val iconFrame = row.getChildAt(0) as FrameLayout
+            val selRing = iconFrame.getChildAt(1) as View
             val chevron = row.getChildAt(2) as ImageView
-            // Card + icon chip carry the three states; nothing about the
-            // geometry changes.
+            // Card tint + the icon-slot ring carry the three states; nothing
+            // about the geometry or the slot's CONTENT changes — the thumbnail
+            // or glyph that identifies the item stays exactly where it was.
             (row.background as? GradientDrawable)?.let { bg ->
                 when (r.state) {
                     SelState.FULL -> {
@@ -1172,78 +1204,21 @@ fun showFilesPickerSheet(
                     }
                 }
             }
+            // ── PASS 25: the selection ring — a thin 2dp stroke overlay on ──
+            // top of the (still fully visible) thumbnail/icon. One visibility
+            // flip and, at most, one shared-drawable assignment per state
+            // change; the overlay is not clickable so the icon's own select
+            // toggle keeps its whole 30dp touch target.
             when (r.state) {
-                SelState.FULL -> icon.setImageDrawable(selCheckIcon)
-                SelState.PARTIAL -> icon.setImageDrawable(selDashIcon)
-                SelState.NONE -> {}
-            }
-            // ── FINAL PASS 2 (§6 — the selection indicator is AUTHORITATIVE): ──
-            // a row bound while SELECTED must kill the thumbnail job its
-            // previous unselected bind launched (and clear the tag the late
-            // bitmap's guard reads), or a thumbnail that finishes loading
-            // AFTER the selection lands overwrites the check/dash chip with
-            // the plain picture. The cancel comes BEFORE the state branches'
-            // effects so both directions are covered by one code path; the
-            // NONE branch re-arms a fresh job below exactly as before.
-            (holder as? RowHolder)?.thumbJob?.cancel()
-            icon.tag = null
-            if (r.state != SelState.NONE) {
-                icon.background = selChipBg
-                icon.setPadding(ctx.dp(6), ctx.dp(6), ctx.dp(7), ctx.dp(7))
-            } else {
-                icon.background = null
-                icon.setPadding(0, 0, 0, 0)
-                // ── Pass-36 Part 2 (#3): REAL thumbnails in the Files sheet ──
-                // — the same shared engine the queue rows and the Media
-                // picker use. On the payload path this relaunch is a warm
-                // LRU hit (the bitmap was just showing a moment ago), so an
-                // un-select costs one cache read, never a decode.
-                icon.scaleType = ImageView.ScaleType.FIT_CENTER
-                if (r.entry.isDir) {
-                    icon.setImageDrawable(Widgets.icon(ctx, R.drawable.ic_folder, col(R.color.accent_light)))
-                } else {
-                    icon.setImageDrawable(FormatIcons.icon(ctx, r.entry.file.extension))
-                    val category = ThumbnailEngine.categoryOf(r.entry.file.extension)
-                    if (category == ThumbnailEngine.FileCategory.IMAGE ||
-                        category == ThumbnailEngine.FileCategory.VIDEO ||
-                        category == ThumbnailEngine.FileCategory.AUDIO ||
-                        category == ThumbnailEngine.FileCategory.APK) {
-                        val thumbTag = "fthumb:${r.entry.file.absolutePath}"
-                        icon.tag = thumbTag
-                        (holder as? RowHolder)?.thumbJob = scope.launch {
-                            val bmp = try {
-                                // ── GOAT-PASS 12 (PART 3.2/3.3): the SAME size ──
-                                // Request as Received/History (40dp) → the SAME
-                                // memory+disk cache entry: an existing XAPK is
-                                // recognized and thumbnailed by filename via the
-                                // one shared ThumbnailEngine pipeline, with no
-                                // dependence on Received events or transfer
-                                // metadata, and no second extraction pass that
-                                // could diverge (the Pass-11 30dp key forced a
-                                // fresh decode per surface and any failure left
-                                // the format vector on Files only).
-                                ThumbnailEngine.load(ctx, r.entry.file.absolutePath, category, sizeDp = 40)
-                            } catch (e: Exception) { null }
-                            if (bmp != null && icon.tag == thumbTag) {
-                                // ── FINAL PASS 8 (PART 3): media thumbnails ──
-                                // keep the edge-to-edge CENTER_CROP fill, but
-                                // an APK launcher icon rides FIT_CENTER —
-                                // its artwork is typically much smaller than
-                                // the decoded tile with wide transparent
-                                // margins, and cropping that wastes the icon
-                                // exactly like stretching distorts it (the
-                                // two halves of the black-corner/cropping
-                                // artifact this pass removes). Aspect
-                                // preserved, centered, transparent margins
-                                // over the tile's own rounded backing.
-                                icon.scaleType = if (category == ThumbnailEngine.FileCategory.APK)
-                                    ImageView.ScaleType.FIT_CENTER
-                                else ImageView.ScaleType.CENTER_CROP
-                                icon.setImageBitmap(bmp)
-                            }
-                        }
-                    }
+                SelState.FULL -> {
+                    selRing.background = selRingFull
+                    selRing.visibility = View.VISIBLE
                 }
+                SelState.PARTIAL -> {
+                    selRing.background = selRingPartial
+                    selRing.visibility = View.VISIBLE
+                }
+                SelState.NONE -> selRing.visibility = View.GONE
             }
             // GOAT-PASS 7 Part 2 (§2D): the folder chevron appears only while
             // that folder is actually selected — INVISIBLE (not GONE) keeps
@@ -1259,6 +1234,78 @@ fun showFilesPickerSheet(
                 chevron.visibility = if (chevronLive) View.VISIBLE else View.INVISIBLE
                 chevron.isClickable = chevronLive
                 chevron.isFocusable = chevronLive
+            }
+        }
+
+        /** ── PASS 25: the icon slot's CONTENT bind, separated from the ──────
+         *  selection chrome because the two no longer have anything to do
+         *  with each other — the slot's content (real thumbnail, format
+         *  glyph, folder glyph) is state-INDEPENDENT now, so only a full
+         *  bind (a fresh row or a recycled holder landing on a new entry)
+         *  runs it; a selection flip (the payload path) never touches the
+         *  thumbnail at all — no cancel, no relaunch, no re-decode, zero
+         *  churn in EITHER direction. The recycled-row reset discipline of
+         *  the old code is preserved wholesale: every bind cancels the
+         *  departed thumbnail job first and re-tags the slot so a late
+         *  bitmap can only ever land on the row it was decoded for. */
+        fun bindIconContent(holder: RecyclerView.ViewHolder, r: Row) {
+            val row = holder.itemView as LinearLayout
+            val iconFrame = row.getChildAt(0) as FrameLayout
+            val icon = iconFrame.getChildAt(0) as ImageView
+            (holder as? RowHolder)?.thumbJob?.cancel()
+            icon.background = null
+            icon.setPadding(0, 0, 0, 0)
+            // ── Pass-36 Part 2 (#3): REAL thumbnails in the Files sheet ──
+            // — the same shared engine the queue rows and the Media
+            // picker use, launched only by a FULL bind (a fresh or
+            // recycled row); a selection flip never comes through here,
+            // so the thumbnail that is already showing simply keeps
+            // showing through select AND deselect.
+            icon.scaleType = ImageView.ScaleType.FIT_CENTER
+            if (r.entry.isDir) {
+                icon.setImageDrawable(Widgets.icon(ctx, R.drawable.ic_folder, col(R.color.accent_light)))
+            } else {
+                icon.setImageDrawable(FormatIcons.icon(ctx, r.entry.file.extension))
+                val category = ThumbnailEngine.categoryOf(r.entry.file.extension)
+                if (category == ThumbnailEngine.FileCategory.IMAGE ||
+                    category == ThumbnailEngine.FileCategory.VIDEO ||
+                    category == ThumbnailEngine.FileCategory.AUDIO ||
+                    category == ThumbnailEngine.FileCategory.APK) {
+                    val thumbTag = "fthumb:${r.entry.file.absolutePath}"
+                    icon.tag = thumbTag
+                    (holder as? RowHolder)?.thumbJob = scope.launch {
+                        val bmp = try {
+                            // ── GOAT-PASS 12 (PART 3.2/3.3): the SAME size ──
+                            // Request as Received/History (40dp) → the SAME
+                            // memory+disk cache entry: an existing XAPK is
+                            // recognized and thumbnailed by filename via the
+                            // one shared ThumbnailEngine pipeline, with no
+                            // dependence on Received events or transfer
+                            // metadata, and no second extraction pass that
+                            // could diverge (the Pass-11 30dp key forced a
+                            // fresh decode per surface and any failure left
+                            // the format vector on Files only).
+                            ThumbnailEngine.load(ctx, r.entry.file.absolutePath, category, sizeDp = 40)
+                        } catch (e: Exception) { null }
+                        if (bmp != null && icon.tag == thumbTag) {
+                            // ── FINAL PASS 8 (PART 3): media thumbnails ──
+                            // keep the edge-to-edge CENTER_CROP fill, but
+                            // an APK launcher icon rides FIT_CENTER —
+                            // its artwork is typically much smaller than
+                            // the decoded tile with wide transparent
+                            // margins, and cropping that wastes the icon
+                            // exactly like stretching distorts it (the
+                            // two halves of the black-corner/cropping
+                            // artifact this pass removes). Aspect
+                            // preserved, centered, transparent margins
+                            // over the tile's own rounded backing.
+                            icon.scaleType = if (category == ThumbnailEngine.FileCategory.APK)
+                                ImageView.ScaleType.FIT_CENTER
+                            else ImageView.ScaleType.CENTER_CROP
+                            icon.setImageBitmap(bmp)
+                        }
+                    }
+                }
             }
         }
 
@@ -1293,17 +1340,28 @@ fun showFilesPickerSheet(
                     .also { it.bottomMargin = c.dp(6) }
             }
             // ── Pass-34 Part 2 (#1): the CHECK CIRCLE IS GONE. The icon ──────
-            // slot is the selection target and the selection indicator in
-            // one: the normal glyph when unselected; an accent chip with a
-            // white check when FULL; an accent chip with a white dash when
-            // PARTIAL. 30dp — bigger than a check circle, easier to land.
+            // slot is the selection target; the selection INDICATOR is the
+            // Pass-25 ring overlay below. 30dp — bigger than a check circle,
+            // easy to land.
             // ── Pass-36 Part 2 (#3): the slot also hosts REAL thumbnails ──
             // now (images, videos, audio art, APK icons) — rounded to the
-            // same 8dp radius the check chip uses, CENTER_CROP while a
-            // bitmap is showing (fills the slot, never stretched) and
-            // FIT_CENTER for the vector glyphs (they keep their padding).
-            val icon = ImageView(c).apply {
+            // same 8dp radius the ring uses, CENTER_CROP while a bitmap is
+            // showing (fills the slot, never stretched) and FIT_CENTER for
+            // the vector glyphs (they keep their padding).
+            // ── PASS 25: the slot becomes a FRAME — the icon plus a ring ──
+            // overlay stacked ON TOP of it. The overlay is what makes the
+            // thumbnail-preserving selection possible: an ImageView's
+            // background draws BEHIND its content, so a ring set on the
+            // icon itself would be completely covered by any CENTER_CROP
+            // bitmap; a dedicated sibling overlay paints over the bitmap,
+            // keeps the slot's exact geometry (MATCH_PARENT, no padding,
+            // the icon's own 8dp rounded clip untouched), and — being
+            // non-clickable — never steals the icon's select-toggle touch.
+            val iconFrame = FrameLayout(c).apply {
                 layoutParams = LinearLayout.LayoutParams(c.dp(30), c.dp(30)).also { it.marginEnd = c.dp(12) }
+            }
+            val icon = ImageView(c).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 isClickable = true; isFocusable = true
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 clipToOutline = true
@@ -1313,6 +1371,17 @@ fun showFilesPickerSheet(
                     }
                 }
             }
+            // ── PASS 25: the selection ring overlay — GONE until a FULL or ──
+            // PARTIAL bind turns it on (see bindSelectionChrome). Its
+            // background is one of the two shared adapter-level ring
+            // drawables; the view itself is a plain non-clickable View, so
+            // it paints over the thumbnail without ever intercepting the
+            // icon's touch.
+            val selRing = View(c).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                visibility = View.GONE
+            }
+            iconFrame.addView(icon); iconFrame.addView(selRing)
             val texts = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -1334,7 +1403,7 @@ fun showFilesPickerSheet(
                 isClickable = true; isFocusable = true
                 setPadding(c.dp(10), 0, c.dp(2), 0)
             }
-            row.addView(icon); row.addView(texts); row.addView(chevron)
+            row.addView(iconFrame); row.addView(texts); row.addView(chevron)
             return RowHolder(row)
         }
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int, payloads: MutableList<Any>) {
@@ -1363,7 +1432,10 @@ fun showFilesPickerSheet(
             val r = shown[position]
             val entry = r.entry
             val row = holder.itemView as LinearLayout
-            val icon = row.getChildAt(0) as ImageView
+            // ── PASS 25: child 0 is the icon FRAME now; the icon lives ──
+            // inside it, under the selection ring overlay.
+            val iconFrame = row.getChildAt(0) as FrameLayout
+            val icon = iconFrame.getChildAt(0) as ImageView
             val texts = row.getChildAt(1) as LinearLayout
             val name = texts.getChildAt(0) as TextView
             val meta = texts.getChildAt(1) as TextView
@@ -1374,6 +1446,11 @@ fun showFilesPickerSheet(
             // calls it exactly like the payload path does, so a full rebind
             // and a selection flip can never drift apart.
             bindSelectionChrome(holder, r)
+            // ── PASS 25: the icon slot's CONTENT (thumbnail / glyph) is its ──
+            // own bind, state-independent — a full bind always runs it so a
+            // recycled row can never keep the previous entry's picture, and
+            // a selection flip never touches it at all.
+            bindIconContent(holder, r)
             // ── Pass-44 (§7): a pinned row says so in its own meta line — ──
             // quiet, textual, no layout change, and never on a search hit
             // (its context line is where the hit IS, not what it is).

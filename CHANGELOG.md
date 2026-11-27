@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.6 — version code 97
+
+- Published Production Final Pass 26.
+- Reworked legacy iOS receiving around a tracked XHR receive with explicit receiver finalization acknowledgement.
+- Prevented false Completed states when a legacy receiver has not actually finalized the file.
+- Added honest retry/deadline handling, attempt-scoped acknowledgement identity, and legacy quick-accept support.
+- Added Pass-26 receiver acknowledgement regression coverage.
+- Preserved the official signing identity for seamless updates.
+
 ## 1.0.5 — version code 96
 
 - Published Production Final Pass 24.

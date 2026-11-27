@@ -467,9 +467,9 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 96
-        versionName "1.0.5"
-        // ── PRODUCTION FINAL PASS 24 (versionCode 96 — versionName 1.0.5): ══
+        versionCode 97
+        versionName "1.0.6"
+        // ── PRODUCTION FINAL PASS 26 (versionCode 97 — versionName 1.0.6): ══
         // Unified selection-mode refinement across the Web Client. ROOT
         // CAUSE of "the thumbnail gets replaced with a checkmark" (audited,
         // real): the selection indicator on the Images grid and the Files

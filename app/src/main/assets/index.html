@@ -1653,6 +1653,12 @@ html[data-boot="pending"] #bootPendingOv{display:-webkit-flex!important;display:
 .legacy-recv-hint{font-size:12px;color:#999}
 .legacy-recv-next{padding:10px 22px;border-radius:10px;border:0;background:var(--acc);
   color:#fff;font-size:13px;font-weight:600;-webkit-tap-highlight-color:transparent}
+/* ── PASS 26 (receiver-acknowledged receive): the Open affordance for a ────
+   received non-image blob (PDFs, media, archives — whatever Quick Look can
+   take in a new tab). Same visual language as Next. */
+.legacy-recv-open{padding:10px 22px;border-radius:10px;border:0;background:var(--acc);
+  color:#fff;font-size:13px;font-weight:600;-webkit-tap-highlight-color:transparent}
+.legacy-recv-open.hid{display:none}
 /* ── Phase 4 additions ─────────────────────────────────────────────────── */
 /* Retry button inside the shared load-error state (§45): one presentation
    across every tab. */
@@ -2132,8 +2138,9 @@ html[data-boot="pending"] #bootPendingOv{display:-webkit-flex!important;display:
     <div class="legacy-recv-err hid" id="legacyRecvErr">Couldn&#8217;t receive this image &#8212; it may have been cancelled, or the connection dropped.</div>
   </div>
   <div class="legacy-recv-foot">
-    <span class="legacy-recv-hint">Press and hold the image, then tap <strong>Save Image</strong></span>
-    <button class="legacy-recv-next" id="legacyRecvNextBtn" onclick="_legacyAdvance()">Next</button>
+    <span class="legacy-recv-hint" id="legacyRecvHint">Press and hold the image, then tap <strong>Save Image</strong></span>
+    <button class="legacy-recv-open hid" id="legacyRecvOpenBtn" type="button" onclick="_legacyOpenRecv()">Open</button>
+    <button class="legacy-recv-next" id="legacyRecvNextBtn" type="button" onclick="_legacyAdvance()">Next</button>
   </div>
 </div>
 
@@ -8014,6 +8021,11 @@ function _qsPumpClearQueued(){
   _qsPumpResume={};
   _qsPumpTakeovers={};
   _qsPumpSawPaused={};   // GOAT-PASS 6 (§3): pending pause-lift watches die with the batch too
+  // ── PASS 26: the LEGACY pump's undispatched entries are the same ──
+  // withdrawn offer on an iOS < 13 Safari — they die with the batch too.
+  // (In-flight legacy receives keep their rows, exactly like the modern
+  // in-flight slots above: their tracked XHRs resolve server-side.)
+  _legacyPumpQ=[];
 }
 function dlQSFile(dlUrl,name,isFolder){
   acceptQSNames([name]);
@@ -8115,17 +8127,17 @@ function dlAllQS(){
       :filesOnly.map(function(f){return f.name;});
     if(allNames.length)acceptQSNames(allNames);
     if(_legacyIOS){
-      // Phase 4 correction (enhanced-Safari receive): with a download
-      // manager present, ALL file types are receivable — the batch accepts
-      // everything non-text and runs it through the sequential real-download
-      // pump (one Safari save-dialog at a time, server-gated, one transfer
-      // identity per file via the handoff semantics). Text items were
-      // handled by the combined copy above (or remain for individual View/
-      // Copy when the copy failed). A stock browser (no DM) degrades per
-      // item: the watcher falls back to the tracked viewer / new-tab path
-      // after the handoff window expires — nothing is silently lost.
+      // PASS 26 (updated): the batch accepts everything non-text and runs it
+      // through the sequential tracked-receive pump (one item at a time,
+      // server-gated, one transfer identity per file, each receive confirmed
+      // by the page's own finalization ack). Text items were handled by the
+      // combined copy above (or remain for individual View/Copy when the
+      // copy failed). The pump presents each received item in the tracked
+      // receive viewer (images render in-page for press-and-hold saving;
+      // everything else gets the Open affordance) — nothing is silently
+      // lost, and nothing is falsely reported.
       if(!filesOnly.length){
-        if(!textConsumed)toast('Only text items — use Copy on each','err');
+        if(!textConsumed)toast('Only text items \u2014 use Copy on each','err');
         return;
       }
       for(i=0;i<filesOnly.length;i++)_legacyRealDownload(filesOnly[i].dlUrl,filesOnly[i].name);
@@ -8800,14 +8812,17 @@ function _handleQStateNow(d){
         var all=q.files||[];
         S.qsFiles=all.filter(function(f){return !f.consumed && !S.qsDispatched[f.name];});
         renderQS(S.qsFiles);
-        if(isAA()&&S.qsFiles.length&&!_legacyIOS){
-          // Phase 3 (§52): the auto-dispatch below is skipped entirely on
-          // iOS < 13 Safari — that browser cannot download at all, and the
-          // first navigation the staggered <a download> clicks would cause
-          // would orphan the page and kill every later dispatch in the
-          // batch. The chips stay visible for manual one-at-a-time receive
-          // (each tap opens the tracked receive viewer / a new tab), the
-          // closest honest equivalent of auto-accept that platform has.
+        if(isAA()&&S.qsFiles.length){
+          // ── PASS 26 (quick accept on legacy iOS): the legacy skip is ──
+          // GONE. The old rationale ("that browser cannot download at all;
+          // the first navigation the staggered <a download> clicks would
+          // cause would orphan the page") described a receive path this
+          // page no longer has: legacy dispatch is the tracked XHR receive
+          // pump (recv=1 + finalization ack — no navigation, no orphaning),
+          // so auto-accept now takes every incoming item immediately on
+          // every browser, exactly like the host's own auto-accept. The
+          // texts stay excluded here (they finalize at accept time
+          // server-side and were handled by Copy/View above).
           var toAccept=S.qsFiles.filter(function(f){return !f.isText;});
           if(toAccept.length){
             acceptQSNames(toAccept.map(function(f){return f.name;}));
@@ -11389,16 +11404,18 @@ function _xferUpPatch(id){xferSync();}
 // portion LumiDropX controls and never pretends otherwise.
 function _queueDownload(url,name){
   if(_legacyIOS){
-    // Phase 4 correction: the legacy router's PRIMARY path is now a REAL
-    // download attempt (§ "The desired iPad 4 behavior"): the hidden iframe
-    // requests the tracked URL with octet=1&handoff=1 — a non-displayable
-    // MIME so any Safari-Plus-class download manager intercepts it (images
-    // included — the displayable-MIME navigation was the whole bug), and
-    // connection-aware abort semantics server-side so the interception's
-    // cancel-then-re-request stays ONE transfer identity. A browser with no
-    // download manager (stock iOS 10) fails the load silently; the watcher
-    // notices via the authoritative transfer state and falls back to the
-    // tracked inline viewer / new-tab path automatically.
+    // PASS 26: the legacy router's PRIMARY path is the page's OWN tracked
+    // receive (see _legacyRealDownload / _legacyRecvDownload): the bytes
+    // genuinely arrive into this page over a recv=1 XHR, the load event
+    // genuinely fires, and the page CONFIRMS finalization back to the
+    // host — the host may no longer report COMPLETED on socket-write
+    // evidence alone. The old octet=1&handoff=1 interception iframe (Phase
+    // 4) was blind by construction on a stock iOS 10 Safari: page JS can
+    // never observe an attachment iframe's fate, WebKit silently discards
+    // small octet bodies and aborts large ones, and the host faithfully
+    // turned both into false verdicts. The server keeps honoring the
+    // iframe protocol for older cached pages; this page no longer sends
+    // it.
     _legacyRealDownload(url,name);
     return;
   }
@@ -11461,6 +11478,28 @@ function _legacyOpenTab(url){
 // existed only as a diagnostic escape hatch during Phase 7's bring-up.
 // _legacyDMOn() stays as a named seam so every call site reads the same
 // intent it always did.
+// ── PASS 26 (the iPad 4 reliability fix — what a STOCK legacy browser ──────
+// actually executes): the pump's PRIMARY dispatch is no longer the
+// interception iframe at all — it is the page's OWN tracked XHR receive
+// (recv=1 + explicit finalization ack; see _legacyRecvDownload). The iframe
+// protocol above remains exactly right for the enhanced-Safari world it was
+// research-verified for, and the server keeps honoring it in full for any
+// older cached page still dispatching it — but page JavaScript can never
+// observe an attachment iframe's fate, and a stock iOS 10.3.3 Safari has
+// NO download manager to intercept it: small octet-stream bodies were
+// slurped-and-discarded (the host marked the transfer COMPLETED while the
+// iPad had received nothing), and large ones aborted mid-stream (the
+// handoff re-await flipped the row ACTIVE→PENDING "Waiting for Safari…"
+// for a re-request that no stock browser ever sends — the stuck-at-0KB
+// "Waiting" and the starts-then-flips-back-to-Waiting regression). The XHR
+// receive makes the whole delivery observable end to end, and the
+// finalization ack makes the host's COMPLETED verdict mean what it says.
+// The enhanced-Safari trade-off is documented and deliberate: an
+// interception cannot be distinguished from a stock browser's silent
+// discard by page JS, so a page that cannot trust the socket write cannot
+// dispatch the interception either; an enhanced Safari receives through
+// the tracked XHR surface exactly like a stock one (its download manager
+// can still take the Open button's blob navigation).
 function _legacyDMOn(){return true;}
 var _legacyPumpQ=[];
 var _legacyPumpBusy=false;
@@ -11489,13 +11528,185 @@ function _legacyRealDownload(url,name){
   _legacyPumpQ.push({url:url,name:name});
   if(!_legacyPumpBusy)_legacyPumpNext();
 }
+// ── PASS 26 (the iPad 4 reliability fix): the pump's PRIMARY dispatch is ───
+// now the page's OWN tracked XHR receive (recv=1 + explicit finalization
+// ack), replacing the blind octet=1&handoff=1 interception iframe as what a
+// STOCK legacy browser actually executes. The iframe protocol remains sound
+// for the enhanced-Safari (jailbreak download-manager) world it was designed
+// for and the server keeps honoring it in full for any older cached page
+// still dispatching it — but page JavaScript can never observe an
+// attachment iframe's fate, and a stock iOS 10.3.3 Safari has no download
+// manager to intercept it either, so that dispatch was BLIND:
+//   • small bodies — WebKit silently slurped the whole octet-stream into
+//     memory and discarded it (it can neither display nor save it); the
+//     socket write "completed" and the host marked the transfer COMPLETED
+//     while the iPad had received nothing at all (the false-Completed
+//     report set);
+//   • large bodies — WebKit aborted the un-displayable load mid-stream;
+//     the host's handoff re-await flipped the row ACTIVE→PENDING
+//     ("Waiting for Safari…", bytes zeroed) for a download-manager
+//     re-request that no stock browser ever sends — the stuck-"Waiting"-
+//     at-0KB report, and exactly the "starts, then flips back to Waiting"
+//     regression.
+// The XHR receive is observable end to end: the bytes genuinely arrive
+// into THIS page, the load event genuinely fires, and the page CONFIRMS
+// finalization back to the host (POST /api/client-transfer/ack, with the
+// attempt identity from the response's X-LDX-ACK header) — the host may no
+// longer report COMPLETED on socket-write evidence alone. See the viewer
+// notes at _legacyPresentRecv for what "finalized" means on a platform
+// with no download manager.
 function _legacyPumpNext(){
   if(!_legacyPumpQ.length){_legacyPumpBusy=false;return;}
   _legacyPumpBusy=true;
   var it=_legacyPumpQ.shift();
-  var u=it.url+(it.url.indexOf('?')>=0?'&':'?')+'octet=1&handoff=1';
-  _legacyFireIframe(u);
-  _legacyWatchHandoff2(it);
+  // Per-item pump context: ONE advance per item, whoever produces it (the
+  // watcher's terminal verdict or the viewer's Next button) — the
+  // GOAT-PASS 3 serial-pump discipline, now shared by two advance sources.
+  //   holding — the receive will be (or was) presented in the tracked
+  //     viewer; on the COMPLETED verdict the watcher deliberately does NOT
+  //     advance — the only way to actually KEEP a received image on a
+  //     platform whose sole save mechanism is press-and-hold on the
+  //     displayed image is to give the user the turn. The viewer's Next
+  //     button advances instead.
+  //   done — the row reached its terminal COMPLETED verdict (the ack
+  //     landed); only then does the viewer's Next advance the pump (a
+  //     mid-receive Next tap is a no-op).
+  var ctx={name:it.name,advanced:false,holding:true,done:false};
+  _legacyPumpCtx=ctx;
+  _legacyRecvDownload(it.url,it.name,ctx);
+  _legacyWatchHandoff2(it,ctx);
+}
+var _legacyPumpCtx=null;
+// Advances the serial pump exactly once per item context, from whichever
+// advance source fires first (watcher verdict / viewer Next). A stale ctx
+// (the pump already moved on — a paused item's later verdict, a superseded
+// watcher leg) can never double-advance it.
+function _legacyPumpAdvance(ctx){
+  if(!ctx||ctx.advanced)return;
+  ctx.advanced=true;
+  if(_legacyPumpCtx===ctx)_legacyPumpCtx=null;
+  _legacyPumpNext();
+}
+// The tracked receive itself: an XHR the page owns, streaming the bytes
+// into memory (responseType 'blob' — supported on iOS 10.3.3's WebKit,
+// unlike fetch streaming or a[download]). The server tracks this request
+// exactly like any other GET of the same URL (same row, same gate, same
+// cancel/abort machinery) — only the completion differs: with recv=1 the
+// row completes on the page's finalization ack below, never on the socket
+// write. Progress, speed and the transfer rows all come from the host's
+// own accounting of this same connection.
+function _legacyRecvDownload(url,name,ctx){
+  var u=url+(url.indexOf('?')>=0?'&':'?')+'recv=1';
+  var x=new XMLHttpRequest();
+  x.open('GET',u,true);
+  try{x.responseType='blob';}catch(e){}
+  x.onreadystatechange=function(){
+    if(x.readyState!==4)return;
+    if(x.status>=200&&x.status<300){
+      var blob=(x.responseType==='blob')?x.response:null;
+      if(blob){
+        // Present only while this item is still the pump's current one — a
+        // user Close/Next that already moved the pump on suppresses the
+        // re-open (the receive itself still completes and confirms: the
+        // bytes are real, the row's verdict is real).
+        if(_legacyPumpCtx===ctx)_legacyPresentRecv(name,blob);
+        // The receive genuinely finished in THIS page — confirm finalization
+        // with the exact attempt identity the host stamped on this very
+        // response ("<tid>.<gen>"). Fire-and-forget: the watcher still reads
+        // the row's authoritative state (on an older host the ack 404s and
+        // the row completed the old way; on this host the row only completes
+        // BECAUSE of this ack).
+        var tk=null;
+        try{tk=x.getResponseHeader('X-LDX-ACK');}catch(e2){}
+        if(tk){
+          var p=tk.indexOf('.');
+          var t=p>0?tk.substring(0,p):'';
+          var g=p>0?tk.substring(p+1):'';
+          if(t&&g)xhrPost('/api/client-transfer/ack?t='+enc(t)+'&g='+enc(g),'').catch(function(){});
+        }
+        return;
+      }
+      // No blob engine (an exotic WebKit that refused responseType): the
+      // honest degradation is the Phase 3 receive surfaces — the tracked
+      // inline viewer for images, a new tab for the rest — the same
+      // platform truth that path always encoded.
+      ctx.holding=false;
+      if(isImg((name||'').split('.').pop().toLowerCase()))_legacyEnqueue(url,name);
+      else _legacyOpenTab(url);
+      return;
+    }
+    // A refusal (400 "Cancelled by host" / "Paused by host", a 404, a
+    // vanished selection) — nothing local to clean: the host's row
+    // machinery already owns the verdict and the watcher's beats observe
+    // it (the 'none'-streak drop below covers a row that never existed).
+  };
+  try{x.send();}catch(e){}
+}
+// Presents one received, fully-in-memory item in the tracked receive
+// viewer. On a platform with no download manager this IS the receive
+// surface: images render from the in-page blob (press-and-hold to save —
+// the only save mechanism iOS 10 Safari offers); anything else gets an
+// Open button that hands the blob to a new tab, where Quick Look shows
+// what it can (PDFs, media, text) and states its own limits for the rest.
+// The blob lives as long as the viewer shows it — advancing drops it, the
+// same one-at-a-time honesty the image queue always had.
+var _legacyRecvBlobUrl=null;
+function _legacyRevokeRecvBlob(){
+  if(_legacyRecvBlobUrl){
+    try{URL.revokeObjectURL(_legacyRecvBlobUrl);}catch(e){}
+    _legacyRecvBlobUrl=null;
+  }
+}
+// Which driver presented the viewer's CURRENT content: 'pump' (a PASS 26
+// tracked receive blob) or 'vq' (the Phase 3 image queue). The Next button
+// advances whichever driver owns what is on screen — the last presentation
+// wins, exactly like the viewer itself.
+var _legacyViewerDriver=null;
+function _legacyPresentRecv(name,blob){
+  _legacyRevokeRecvBlob();
+  var url=null;
+  try{url=URL.createObjectURL(blob);}catch(e){url=null;}
+  _legacyRecvBlobUrl=url;
+  var ov=document.getElementById('legacyRecvOv');
+  if(!ov){if(url)_legacyOpenTab(url);return;}
+  _legacyViewerDriver='pump';
+  var isImage=isImg((name||'').split('.').pop().toLowerCase());
+  var img=document.getElementById('legacyRecvImg');
+  var loading=document.getElementById('legacyRecvLoading');
+  var err=document.getElementById('legacyRecvErr');
+  var hint=document.getElementById('legacyRecvHint');
+  var openBtn=document.getElementById('legacyRecvOpenBtn');
+  var nextBtn=document.getElementById('legacyRecvNextBtn');
+  if(err)err.classList.add('hid');
+  // The bytes are already in the page — there is nothing to wait for.
+  if(loading)loading.style.display='none';
+  if(hint){
+    hint.innerHTML=isImage
+      ?'Press and hold the image, then tap <strong>Save Image</strong>'
+      :'Received from the host \u2014 tap <strong>Open</strong> to view it in a new tab';
+  }
+  if(openBtn){
+    if(!isImage&&url)openBtn.classList.remove('hid');
+    else openBtn.classList.add('hid');
+  }
+  if(nextBtn)nextBtn.textContent='Next';
+  if(isImage&&url){
+    img.style.display='';
+    img.onerror=function(){
+      img.style.display='none';
+      if(err)err.classList.remove('hid');
+    };
+    img.onload=function(){};
+    img.src=url;
+  }else{
+    img.removeAttribute('src');
+    img.style.display='none';
+  }
+  if(!isImage)toast('Received \u201c'+name+'\u201d','ok');
+  ov.classList.remove('hid');
+}
+function _legacyOpenRecv(){
+  if(_legacyRecvBlobUrl)_legacyOpenTab(_legacyRecvBlobUrl);
 }
 // One reused hidden iframe; src reset through about:blank first so firing
 // the SAME URL twice in a row genuinely re-requests it (old WebKit skips
@@ -11596,7 +11807,15 @@ function _legacyWatchHandoff(it){
 // pump falls back to the Phase 4 XFER-polling watcher unchanged (plus its
 // own no-re-open-on-cancel fix above), so old hosts behave exactly as they
 // did, minus the cancel-re-opens bug.
-function _legacyWatchHandoff2(it){
+// ── PASS 26: the watcher now shares its advance discipline with the viewer
+// through the per-item pump context (see _legacyPumpNext) — ONE advance per
+// item no matter how many state transitions it observes, and on the
+// COMPLETED verdict the advance deliberately WAITS for the viewer's Next
+// button while the received item is being presented (ctx.holding): the only
+// save mechanism a stock iOS 10 Safari has is press-and-hold on the
+// DISPLAYED image, so an automatic advance would kick the user off a
+// received image before they could save it.
+function _legacyWatchHandoff2(it,ctx){
   var name=it.name;
   var HO_PATIENCE_MS=45000;
   var NONE_BEATS=5;
@@ -11614,8 +11833,9 @@ function _legacyWatchHandoff2(it){
   // second one. The watcher itself keeps running after a pause-advance so
   // the item's eventual verdict is still observed (and its save sheet
   // still extends the host's re-await window).
-  var advanced=false;
-  function advancePump(){if(advanced)return;advanced=true;_legacyPumpNext();}
+  // ── PASS 26: the guard moved onto the shared per-item ctx — the viewer's
+  // Next button and this watcher are now the SAME one-advance rule.
+  function advancePump(){_legacyPumpAdvance(ctx);}
   function advance(){finish();advancePump();}
   function giveUp(){
     // Honest teardown BEFORE degrading: the row becomes Cancelled on the
@@ -11635,9 +11855,23 @@ function _legacyWatchHandoff2(it){
       if(b.i&&b.i!==boundTid)boundTid=b.i;
       if(r&&r.rows&&r.rows.length)_legacyPumpPrune(r.rows);
       var st=b.s||'none';
-      if(st==='completed'){advance();return;}
-      if(st==='cancelled'){advance();return;}
+      if(st==='completed'){
+        // ── PASS 26: a completed verdict while the item is (or will be) ──
+        // presented in the tracked viewer hands the turn to the USER — the
+        // viewer's Next button advances the pump. Press-and-hold-to-save is
+        // a human-time action; an automatic advance would race it. The
+        // watcher itself stops (its verdict is in); a non-presented item
+        // (ctx.holding already cleared — a blob-less degradation, a fallback
+        // surface) advances immediately exactly as before.
+        if(ctx&&ctx.holding){ctx.done=true;finish();return;}
+        advance();return;
+      }
+      if(st==='cancelled'){
+        if(ctx)ctx.holding=false;
+        advance();return;
+      }
       if(st==='failed'){
+        if(ctx)ctx.holding=false;
         toast('Couldn\u2019t receive \u201c'+name+'\u201d from the host','err');
         advance();return;
       }
@@ -11749,11 +11983,18 @@ function _legacyNext(){
   var it=_legacyQ.shift();
   var ov=document.getElementById('legacyRecvOv');
   if(!ov){_directDownload(it.url,it.name);_legacyNext();return;}
+  _legacyViewerDriver='vq';
   document.getElementById('legacyRecvTitle').textContent=it.name;
   var img=document.getElementById('legacyRecvImg');
   var loading=document.getElementById('legacyRecvLoading');
   var err=document.getElementById('legacyRecvErr');
   var nextBtn=document.getElementById('legacyRecvNextBtn');
+  // ── PASS 26: the Phase 3 queue presents IMAGES only — no Open ──
+  // affordance, and the original image hint.
+  var openBtn=document.getElementById('legacyRecvOpenBtn');
+  if(openBtn)openBtn.classList.add('hid');
+  var hint=document.getElementById('legacyRecvHint');
+  if(hint)hint.innerHTML='Press and hold the image, then tap <strong>Save Image</strong>';
   img.style.display='';
   if(err)err.classList.add('hid');
   if(loading)loading.style.display='';
@@ -11772,8 +12013,44 @@ function _legacyNext(){
   img.src=it.url+(it.url.indexOf('?')>=0?'&':'?')+'inline=1';
   ov.classList.remove('hid');
 }
-function _legacyAdvance(){_legacyNext();}
+function _legacyAdvance(){
+  // ── PASS 26: the viewer's Next serves whichever driver presented the ──
+  // current item. A pump-presented receive advances the serial pump — but
+  // ONLY once its row genuinely COMPLETED (ctx.done): a mid-receive item's
+  // turn is not the user's to end early, and a not-yet-arrived verdict
+  // stays the watcher's to read. A Phase 3 image-queue view advances that
+  // queue, exactly as before.
+  if(_legacyViewerDriver==='pump'){
+    var c=_legacyPumpCtx;
+    if(c&&c.done&&!c.advanced){
+      _legacyCloseRecv();
+      _legacyPumpAdvance(c);
+    }
+    return;
+  }
+  _legacyNext();
+}
 function _legacyStop(){
+  if(_legacyViewerDriver==='pump'){
+    // ── PASS 26: on the pump-driven receive surface the close button is ──
+    // the same stop intent it always was for the image queue — the REMAINING
+    // queue dies here. The current item's transfer is deliberately left
+    // alone: its XHR is already with the host's own row machinery and will
+    // resolve (and confirm) on its own; a later dispatch restarts the pump
+    // cleanly. If the current item was already waiting on the viewer's Next
+    // (its one remaining advance), perform that advance now so the pump
+    // idles instead of wedging on a turn nobody will take.
+    var c=_legacyPumpCtx;
+    _legacyPumpQ=[];
+    _legacyCloseRecv();
+    if(c){
+      c.holding=false;
+      _legacyPumpAdvance(c);
+      _legacyPumpCtx=null;
+    }
+    _legacyViewerDriver=null;
+    return;
+  }
   _legacyQ=[];
   _legacyBusy=false;
   _legacyCloseRecv();
@@ -11782,6 +12059,7 @@ function _legacyCloseRecv(){
   var ov=document.getElementById('legacyRecvOv');
   if(!ov)return;
   ov.classList.add('hid');
+  _legacyRevokeRecvBlob();   // PASS 26: a closed view drops its in-page blob
   var img=document.getElementById('legacyRecvImg');
   if(img){img.removeAttribute('src');img.style.display='';}
 }
@@ -11795,13 +12073,13 @@ function _legacyCloseRecv(){
 function _zipDownload(pairs,zipName){
   var body=pairs.map(function(p){return enc(p[0])+'='+enc(p[1]);}).join('&');
   // Phase 7 (§7.3 archives/folders on enhanced Safari): every download
-  // dispatch funnels through _queueDownload — on legacy that is the real-
-  // download pump with octet=1&handoff=1, which /api/zip-stream now honors
-  // (single-file AND generated-archive branches), so a ZIP receive on the
-  // iPad is ONE tracked identity through the interception's abort + the
-  // download manager's re-request instead of a stray blank tab plus a
-  // phantom failed row plus a duplicate delivery. On modern browsers
-  // _queueDownload IS _directDownload — byte-identical behavior.
+  // dispatch funnels through _queueDownload — on legacy that is the tracked
+  // XHR receive pump (PASS 26: recv=1 + finalization ack), which
+  // /api/zip-stream honors on the single-file AND generated-archive
+  // branches alike, so a ZIP receive on the iPad is ONE tracked identity
+  // whose completion is the page's own finalization confirmation. On
+  // modern browsers _queueDownload IS _directDownload — byte-identical
+  // behavior.
   var fallbackToDirectQs=function(){ _queueDownload('/api/zip-stream?'+body,zipName); };
   xhrPost('/api/zip-stream/select',body).then(function(r){
     if(r&&r.token)_queueDownload('/api/zip-stream?selection='+enc(r.token),zipName);

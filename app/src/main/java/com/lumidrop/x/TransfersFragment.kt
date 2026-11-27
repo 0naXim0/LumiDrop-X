@@ -2138,6 +2138,25 @@ class TransfersFragment : Fragment() {
             layoutParams = FrameLayout.LayoutParams(dp(40), dp(40))
         }
         thumbStack.addView(thumbView)
+        // ── PASS 25 (the refined selection outline, native half of the ──────
+        // Pass-24 redesign): a thin 2dp accent ring overlay stacked ON TOP of
+        // the thumbnail, below the direction badge. The Received/History tabs
+        // never REPLACED their thumbnails with a checkbox — their selection
+        // was already container-only (Pass-28 #1.2) — but the thumbnail
+        // itself carried no selected-state treatment, so a picked row's
+        // identity cue was only the card-wide tint. This ring is the same
+        // thumbnail-preserving selection language the Web Client's Pass 24
+        // settled on and the Files/Music sheets now speak: drawn over the
+        // intact bitmap (an ImageView's background would sit UNDER the
+        // CENTER_CROP content and be invisible), transparent fill so it
+        // covers no content, GONE by default, non-clickable so the card's
+        // own toggle touch is untouched. applySelectionVisual flips it
+        // together with the container tint on every path.
+        thumbStack.addView(android.view.View(ctx).apply {
+            tag = "sel_ring"
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+        })
         thumbStack.addView(ImageView(ctx).apply {
             tag = "dir_badge"
             background = ContextCompat.getDrawable(ctx, R.drawable.bg_accent_badge)
@@ -6144,12 +6163,27 @@ class TransfersFragment : Fragment() {
     // a first-ever paint, applies instantly — never animating from a stale
     // tint. The per-card state (and the in-flight animator) live in a keyed
     // tag so the plain tag keeps carrying the row id.
+    //
+    // ── PASS 25 (the refined selection outline): a selected row additionally ──
+    // draws a thin 2dp accent ring around its THUMBNAIL (the "sel_ring"
+    // overlay built by createRowShell) — the same thumbnail-preserving
+    // selection idiom the Web Client's Pass 24 established and the Files/
+    // Music sheets now share. The thumbnail itself never changes content,
+    // size or shape; the ring rides on top of it and flips with the same
+    // `want` verdict that drives the container tint, so the two can never
+    // disagree. Created once per fragment and reused by every row.
     private class SelVisualState {
         var applied = 0            // 0 = normal, 1 = selection-mode unselected, 2 = selected
         var fill = 0
         var stroke = 0
         var animator: android.animation.ValueAnimator? = null
     }
+
+    /** PASS 25: the shared selection-ring drawable (2dp accent stroke over
+     *  the thumbnail, rounded to the thumb's own 8dp radius, transparent
+     *  fill). Lazily created on first use — applySelectionVisual can run
+     *  before any fragment view exists, and col() needs a live context. */
+    private var selThumbRingBg: GradientDrawable? = null
 
     /** Straight-line argb blend — [t] 0f..1f from [from] toward [to]. */
     private fun blendCol(from: Int, to: Int, t: Float): Int {
@@ -6165,6 +6199,23 @@ class TransfersFragment : Fragment() {
 
     private fun applySelectionVisual(card: LinearLayout, active: Boolean, selected: Boolean, sameRow: Boolean) {
         val want = if (!active) 0 else if (selected) 2 else 1
+        // ── PASS 25: the thumbnail ring flips FIRST, on every path — it ──
+        // rides the SAME verdict as the container tint below (want == 2 is
+        // "selected"), and it must also be re-asserted on the early-return
+        // path so a recycled card can never keep a stale ring from the row
+        // it last showed. setVisibility with an unchanged value is a
+        // framework no-op, so the redundant assignment costs nothing.
+        if (selThumbRingBg == null) {
+            selThumbRingBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(2), col(R.color.accent))
+            }
+        }
+        findTagged<android.view.View>(card, "sel_ring")?.let { ring ->
+            ring.background = if (want == 2) selThumbRingBg else null
+            ring.visibility = if (want == 2) View.VISIBLE else View.GONE
+        }
         @Suppress("UNCHECKED_CAST")
         var st = card.getTag(R.id.sel_visual) as? SelVisualState
         if (st == null) {

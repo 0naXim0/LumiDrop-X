@@ -524,18 +524,36 @@ fun showMusicPickerSheet(
     // adapter (locals are strictly before-use) so both the adapter's payload
     // path and the surgical repaint can reach them.
     val MusicSelPayload = Any()   // a marker instance — Kotlin forbids local `object` declarations
-    val musicChipBg = android.graphics.drawable.GradientDrawable().apply {
+    // ── PASS 25 (the native half of the Pass-24 selection redesign): the ──────
+    // art slot's accent CHECK/DASH CHIP is RETIRED. The chip model — a picked
+    // row's artwork was hidden and replaced by a solid-accent rounded square
+    // with a check (FULL) or dash (PARTIAL) glyph — was the exact native twin
+    // of the on-thumbnail badge the Web Client's Pass 24 deleted: with the
+    // artwork gone, similar albums/tracks became indistinguishable exactly
+    // while the user was selecting them. The artwork (or the folder/notes
+    // glyph where there is no art) now stays visible in EVERY state, and
+    // selection is the SAME language the web client settled on: a thin 2dp
+    // accent ring drawn as a pointer-transparent overlay ON TOP of the art
+    // slot (rounded to the slot's own 8dp radius, transparent fill — covers
+    // no content, changes no geometry) plus the card tint the row already
+    // carried. FULL = solid-accent ring; PARTIAL = the quieter accent_light
+    // ring at 66 alpha, matching the card-tint family contrast. Shared,
+    // created once per sheet session: a flip allocates nothing.
+    val musicRingFull = android.graphics.drawable.GradientDrawable().apply {
         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
         cornerRadius = ctx.dpf(8f)
-        setColor(col(R.color.accent))
+        setStroke(ctx.dp(2), col(R.color.accent))
+    }
+    val musicRingPartial = android.graphics.drawable.GradientDrawable().apply {
+        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+        cornerRadius = ctx.dpf(8f)
+        setStroke(ctx.dp(2), (col(R.color.accent_light) and 0x00FFFFFF) or 0x66000000)
     }
     val musicIdleArtBg = android.graphics.drawable.GradientDrawable().apply {
         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
         cornerRadius = ctx.dpf(8f)
         setColor(0x14FFFFFF)
     }
-    val musicCheckIcon = Widgets.icon(ctx, R.drawable.ic_check, col(R.color.text_primary))
-    val musicDashIcon = Widgets.icon(ctx, R.drawable.ic_dash, col(R.color.text_primary))
 
     fun buildRows(): List<Row> {
         val rows = ArrayList<Row>()
@@ -702,10 +720,10 @@ fun showMusicPickerSheet(
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     .also { it.bottomMargin = c.dp(6) }
             }
-            // The art slot (Pass-36 #6): a rounded thumbnail frame. Its
-            // content carries the state — artwork + audio mark unpicked,
-            // the accent check chip picked — exactly the Files sheet's
-            // icon-slot contract.
+            // The art slot: a rounded thumbnail frame. Its CONTENT is now
+            // state-independent (PASS 25 — artwork or glyph in every state);
+            // selection is the ring overlay stacked on top of it, plus the
+            // row card's tint.
             val artFrame = FrameLayout(c).apply {
                 layoutParams = LinearLayout.LayoutParams(c.dp(42), c.dp(42)).also { it.marginEnd = c.dp(12) }
                 isClickable = true; isFocusable = true
@@ -731,10 +749,11 @@ fun showMusicPickerSheet(
                 }
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             }
-            // ── Pass-36 (#6): the circular selection BADGE is GONE. Picked ──
-            // state is the Files sheet's model exactly: the art slot itself
-            // becomes the accent check chip (see the track bind), plus the
-            // row card's tint — no separate checkbox circle anywhere.
+            // ── Pass-36 (#6): the circular selection BADGE is GONE. ──
+            // ── PASS 25: so is the accent CHECK CHIP that replaced the ──
+            // artwork. Selection is the ring overlay below (over the intact
+            // artwork) plus the row card's tint — no separate checkbox
+            // anywhere, no artwork hiding anywhere.
             // ── Pass-35 (#8A): the audio identity mark — a small music note ──
             // in a quiet rounded scrim at the art slot's TOP-end corner, the
             // same identification language the queue's video thumbs use.
@@ -750,7 +769,15 @@ fun showMusicPickerSheet(
                 layoutParams = FrameLayout.LayoutParams(c.dp(16), c.dp(16),
                     Gravity.TOP or Gravity.END)
             }
-            artFrame.addView(art); artFrame.addView(audioMark)
+            // ── PASS 25: the selection ring overlay — GONE until a picked /
+            // partial bind turns it on. A plain non-clickable View over the
+            // artwork: it paints the thin accent stroke, covers nothing and
+            // never intercepts the art frame's toggle touch.
+            val musicSelRing = View(c).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                visibility = View.GONE
+            }
+            artFrame.addView(art); artFrame.addView(audioMark); artFrame.addView(musicSelRing)
             val texts = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -777,19 +804,21 @@ fun showMusicPickerSheet(
 
         // ── SELECTION FINAL PASS 1 (§4B): the selection-only payload rebind. ──
         // A picked/partial flip touches nothing but the row's selection
-        // chrome — the card tint, the art slot's chip↔content flip, and the
-        // folder chevron's picked-only visibility — so the payload path
-        // rebinds exactly those and leaves the texts, listeners and every
-        // other part of the row exactly as the last full bind left them.
-        // Shared, create-once drawables (musicChipBg / musicIdleArtBg /
-        // musicCheckIcon / musicDashIcon, declared above the adapter) keep
-        // the flip allocation-free; an un-pick re-shows the artwork through
-        // the same bindAlbumArt the full bind uses (a warm cache hit).
+        // chrome — the card tint, the art slot's ring overlay, and the folder
+        // chevron's picked-only visibility — so the payload path rebinds
+        // exactly those and leaves the artwork, the texts, the audio mark,
+        // the listeners and every other part of the row exactly as the last
+        // full bind left them. Shared, create-once drawables
+        // (musicRingFull / musicRingPartial / musicIdleArtBg, declared above
+        // the adapter) keep the flip allocation-free.
+        // ── PASS 25: the artwork is no longer touched AT ALL on a flip — ──
+        // it was never removed, so there is nothing to restore; select and
+        // deselect each cost one card-color mutation and one ring visibility
+        // flip, never an artwork re-dispatch, never a cache read.
         fun bindSelChrome(holder: RecyclerView.ViewHolder, r: Row) {
             val row = holder.itemView as LinearLayout
             val artFrame = row.getChildAt(0) as FrameLayout
-            val art = artFrame.getChildAt(0) as ImageView
-            val audioMark = artFrame.getChildAt(1) as ImageView
+            val selRing = artFrame.getChildAt(2) as View
             val texts = row.getChildAt(1) as LinearLayout
             val name = texts.getChildAt(0) as TextView
             val tail = row.getChildAt(2) as ImageView
@@ -812,62 +841,22 @@ fun showMusicPickerSheet(
                 }
             }
             name.setTextColor(col(if (playing) R.color.accent_light else R.color.text_primary))
-            when {
-                r.isAllEntry -> {
-                    if (r.picked) {
-                        art.background = musicChipBg
-                        art.setImageDrawable(if (r.partial) musicDashIcon else musicCheckIcon)
-                        art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                        audioMark.visibility = View.GONE
-                    } else {
-                        art.background = musicIdleArtBg
-                        art.setImageDrawable(Widgets.icon(ctx, R.drawable.ic_audio, col(R.color.accent_light)))
-                        art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                        audioMark.visibility = View.GONE
-                    }
-                    tail.visibility = if (r.picked) View.VISIBLE else View.INVISIBLE
-                    tail.isClickable = r.picked
-                }
-                r.folder != null -> {
-                    val folder = r.folder
-                    if (r.picked) {
-                        art.background = musicChipBg
-                        art.setImageDrawable(if (r.partial) musicDashIcon else musicCheckIcon)
-                        art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                        audioMark.visibility = View.GONE
-                    } else {
-                        val coverTrack = folder.tracks.firstOrNull()
-                        if (coverTrack != null) {
-                            art.background = musicIdleArtBg
-                            art.setPadding(0, 0, 0, 0)
-                            val fkey = artKeyOf(coverTrack)
-                            art.tag = fkey
-                            bindAlbumArt(ctx, scope, art, fkey, coverTrack.uri, coverTrack.albumId, ctx.dp(42), col(R.color.text_muted))
-                        } else {
-                            art.background = musicIdleArtBg
-                            art.setImageDrawable(Widgets.icon(ctx, R.drawable.ic_folder, col(R.color.accent_light)))
-                            art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                        }
-                        audioMark.visibility = View.GONE
-                    }
-                    tail.visibility = if (r.picked) View.VISIBLE else View.INVISIBLE
-                    tail.isClickable = r.picked
-                }
-                else -> {
-                    val track = r.track ?: return
-                    if (r.picked) {
-                        art.background = musicChipBg
-                        art.setImageDrawable(musicCheckIcon)
-                        art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                        audioMark.visibility = View.GONE
-                    } else {
-                        art.background = musicIdleArtBg
-                        art.setPadding(0, 0, 0, 0)
-                        art.tag = artKeyOf(track)
-                        bindAlbumArt(ctx, scope, art, artKeyOf(track), track.uri, track.albumId, ctx.dp(42), col(R.color.text_muted))
-                        audioMark.visibility = View.VISIBLE
-                    }
-                }
+            // ── PASS 25: the selection ring over the (intact) artwork — ──
+            // one visibility flip plus at most one shared-drawable
+            // assignment; FULL is the solid-accent ring, PARTIAL the
+            // quieter accent_light one, and the artwork underneath never
+            // changes.
+            if (r.picked) {
+                selRing.background = if (r.partial) musicRingPartial else musicRingFull
+                selRing.visibility = View.VISIBLE
+            } else {
+                selRing.visibility = View.GONE
+            }
+            // The folder chevron's picked-only visibility (GOAT-PASS 7 §2D)
+            // rides the same payload path it always did.
+            if (r.isAllEntry || r.folder != null) {
+                tail.visibility = if (r.picked) View.VISIBLE else View.INVISIBLE
+                tail.isClickable = r.picked
             }
         }
 
@@ -910,30 +899,16 @@ fun showMusicPickerSheet(
                 art.setImageDrawable(null)
                 art.setPadding(0, 0, 0, 0)
             }
-            /** ── Pass-35 (#8B/#13): the three-state chip — FULL paints the ──
-             *  check chip, PARTIAL the dash chip, and unselected leaves the
-             *  properly-proportioned glyph. */
-            fun chipArt(full: Boolean, glyphRes: Int, glyphTint: Int) {
-                if (r.picked) {
-                    art.background = android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        cornerRadius = ctx.dpf(8f)
-                        setColor(col(R.color.accent))
-                    }
-                    // PARTIAL keeps a visible sliver of the unselected look:
-                    // the dash mark instead of the check.
-                    art.setImageDrawable(Widgets.icon(ctx,
-                        if (full) R.drawable.ic_check else R.drawable.ic_dash,
-                        col(R.color.text_primary)))
-                    // A 28dp glyph inside the 42dp slot — the Files picker's
-                    // proportions, not a stretched blob.
-                    art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                    audioMark.visibility = View.GONE   // the whole slot IS the mark
-                } else {
-                    idleArt()
-                    art.setImageDrawable(Widgets.icon(ctx, glyphRes, glyphTint))
-                    art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                }
+            /** ── PASS 25: the glyph bind for slots with no artwork — the ──
+             *  state-independent replacement of the Pass-35 three-state chip:
+             *  the glyph shows in EVERY state (picked or not); the ring
+             *  overlay on top of it (see paintCard) is the only thing that
+             *  moves with the selection. A 28dp glyph inside the 42dp slot —
+             *  the Files picker's proportions, not a stretched blob. */
+            fun glyphArt(glyphRes: Int, glyphTint: Int) {
+                idleArt()
+                art.setImageDrawable(Widgets.icon(ctx, glyphRes, glyphTint))
+                art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
             }
             fun paintCard(picked: Boolean, partial: Boolean, playing: Boolean) {
                 (row.background as? android.graphics.drawable.GradientDrawable)?.let { bg ->
@@ -954,17 +929,28 @@ fun showMusicPickerSheet(
                         }
                     }
                 }
-                // Pass-36 (#6): no accent ring around the artwork — the art
-                // slot's own chip state plus this card tint are the selection
-                // indicators, exactly as in the Files sheet.
+                // ── PASS 25: the selection ring over the artwork — the ──
+                // full bind flips it here, the payload rebind flips it in
+                // bindSelChrome; both read the same shared drawables, so the
+                // two paths can never drift. The artwork underneath is
+                // untouched by the state.
+                val selRing = artFrame.getChildAt(2) as View
+                if (picked) {
+                    selRing.background = if (partial) musicRingPartial else musicRingFull
+                    selRing.visibility = View.VISIBLE
+                } else {
+                    selRing.visibility = View.GONE
+                }
                 name.setTextColor(col(if (playing) R.color.accent_light else R.color.text_primary))
             }
 
             if (r.isAllEntry) {
                 // ── Pass-35 (#13): "All tracks" — a real folder-like row: ──
-                // selectable as one collection (FULL/PARTIAL chips), openable
-                // via the row and the chevron, exactly like any folder.
-                chipArt(!r.partial, R.drawable.ic_audio, col(R.color.accent_light))
+                // selectable as one collection (FULL/PARTIAL ring states),
+                // openable via the row and the chevron, exactly like any
+                // folder. PASS 25: the notes glyph stays visible in every
+                // state; the ring + card tint carry the selection.
+                glyphArt(R.drawable.ic_audio, col(R.color.accent_light))
                 name.text = allTracksFolder.name
                 val n = allTracksFolder.tracks.size
                 meta.text = "$n track${if (n != 1) "s" else ""} · ${android.text.format.Formatter.formatShortFileSize(ctx, allTracksFolder.bytes)}"
@@ -990,14 +976,14 @@ fun showMusicPickerSheet(
                 // folder/album row's art slot now shows its FIRST TRACK's
                 // album cover (the same shared cache, decode and pending-
                 // dispatch the track rows use — one decode serves the whole
-                // album) instead of a bare folder glyph. Picked rows keep
-                // the check/dash chip; a folder with no tracks (or a decode
-                // that genuinely finds no art anywhere) falls back to the
-                // folder glyph exactly as before.
+                // album) instead of a bare folder glyph. PASS 25: the cover
+                // (or the folder glyph when there is no art) stays visible in
+                // EVERY state — the ring + card tint carry the selection; a
+                // folder with no tracks (or a decode that genuinely finds no
+                // art anywhere) falls back to the folder glyph exactly as
+                // before.
                 val coverTrack = folder.tracks.firstOrNull()
-                if (r.picked) {
-                    chipArt(!r.partial, R.drawable.ic_folder, col(R.color.accent_light))
-                } else if (coverTrack != null) {
+                if (coverTrack != null) {
                     art.background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                         cornerRadius = ctx.dpf(8f)
@@ -1008,7 +994,7 @@ fun showMusicPickerSheet(
                     art.tag = fkey
                     bindAlbumArt(ctx, scope, art, fkey, coverTrack.uri, coverTrack.albumId, ctx.dp(42), col(R.color.text_muted))
                 } else {
-                    chipArt(false, R.drawable.ic_folder, col(R.color.accent_light))
+                    glyphArt(R.drawable.ic_folder, col(R.color.accent_light))
                 }
                 name.text = folder.name
                 meta.text = "${folder.tracks.size} track${if (folder.tracks.size != 1) "s" else ""} · ${android.text.format.Formatter.formatShortFileSize(ctx, folder.bytes)}"
@@ -1032,34 +1018,24 @@ fun showMusicPickerSheet(
                 val key = trackKey(track)
                 val picked = r.picked
                 val playing = r.playing && MusicPlayback.isPlaying
-                // ── Pass-36 (#6): the picked track's art slot becomes the ──
-                // accent CHECK CHIP — the Files sheet's picked-slot model,
-                // verbatim: artwork hidden, check centered, no circular
-                // badge, no accent ring around the artwork. Unpicked keeps
-                // the artwork with the audio identity mark at its corner.
-                if (picked) {
-                    art.background = android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        cornerRadius = ctx.dpf(8f)
-                        setColor(col(R.color.accent))
-                    }
-                    art.setImageDrawable(Widgets.icon(ctx, R.drawable.ic_check, col(R.color.text_primary)))
-                    art.setPadding(ctx.dp(7), ctx.dp(7), ctx.dp(7), ctx.dp(7))
-                    audioMark.visibility = View.GONE
-                } else {
-                    // Artwork: the shared cache + one decode per source; the tag
-                    // guard keeps a recycled frame from receiving another track's
-                    // cover. The audio mark (#8A) rides the slot's top corner.
-                    art.background = android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        cornerRadius = ctx.dpf(8f)
-                        setColor(0x14FFFFFF)
-                    }
-                    art.setPadding(0, 0, 0, 0)
-                    art.tag = artKeyOf(track)
-                    bindAlbumArt(ctx, scope, art, artKeyOf(track), track.uri, track.albumId, ctx.dp(42), col(R.color.text_muted))
-                    audioMark.visibility = View.VISIBLE
+                // ── PASS 25: the artwork is bound identically in EVERY ──
+                // state — picked or not, the album cover stays visible (the
+                // native half of the Pass-24 selection redesign: the accent
+                // check chip that hid it is retired). The ring overlay plus
+                // the card tint (paintCard) are the selection treatment; the
+                // audio identity mark (#8A) keeps riding the slot's corner.
+                // Artwork: the shared cache + one decode per source; the tag
+                // guard keeps a recycled frame from receiving another track's
+                // cover.
+                art.background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = ctx.dpf(8f)
+                    setColor(0x14FFFFFF)
                 }
+                art.setPadding(0, 0, 0, 0)
+                art.tag = artKeyOf(track)
+                bindAlbumArt(ctx, scope, art, artKeyOf(track), track.uri, track.albumId, ctx.dp(42), col(R.color.text_muted))
+                audioMark.visibility = View.VISIBLE
                 name.text = track.title ?: track.name
                 val bits = mutableListOf<String>()
                 track.artist?.let { bits.add(it) }
