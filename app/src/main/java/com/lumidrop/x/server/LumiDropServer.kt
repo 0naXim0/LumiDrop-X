@@ -1705,16 +1705,6 @@ class LumiDropServer(
             m == Method.GET  && uri == "/api/qstate"         -> apiQState(s)
             m == Method.GET  && uri == "/api/events"         -> apiEvents(s)
             m == Method.POST && uri == "/api/client-transfer/cancel" -> apiClientTransferCancel(s)
-            // ── PASS 26 (receiver-acknowledged completion): the receiver's ──
-            // OWN finalization confirmation — POSTed by the legacy-iOS web
-            // client's tracked receive (recv=1 XHR) the moment its load
-            // genuinely finished. This is the ONLY completion path an
-            // ack-expected DOWNLOAD row has (see TransferManager.ackDownload-
-            // Receive): a socket-write "success" proves nothing about a
-            // browser with no download manager (the iPad 4's stock iOS 10.3.3
-            // Safari silently discards exactly such bodies). Attempt-scoped
-            // (tid + generation), peer-validated, idempotent.
-            m == Method.POST && uri == "/api/client-transfer/ack"   -> apiClientTransferAck(s)
             // Pass-17: the liveness ACK endpoint (see probePeerAlive) — answers
             // to a challenge nonce carried in the "pn" state field. No body,
             // no side effects beyond recording the answer.
@@ -2516,18 +2506,13 @@ document.getElementById('pwd').focus();
             // a duplicate row: the classic ghost-row double-delivery.
             val zOctet   = s.parameters["octet"]?.firstOrNull() == "1"
             val zHandoff = s.parameters["handoff"]?.firstOrNull() == "1"
-            // ── PASS 26 (receiver-acknowledged completion): same recv=1 rule ──
-            // as every other download surface (see apiQSDl's block).
-            val zRecv = s.parameters["recv"]?.firstOrNull() == "1"
-            if (zRecv) TransferManager.markDownloadAckExpected(tid)
             if (zHandoff) TransferManager.markHandoffEligible(tid)
-            val zSettleMs = if (zHandoff && !TransferManager.wasReAwaited(tid)) HANDOFF_SETTLE_MS else 0L
+            val zSettleMs = handoffSettleMs(zHandoff, tid, f.length())
             val zConnToken = handoffConnCounter.incrementAndGet()
             if (zHandoff && (TransferManager.wasReAwaited(tid) || TransferManager.liveConnectionCount(tid) > 1))
                 TransferManager.markHandoffSuperseded(tid, zConnToken)
             return serveFileDownload(f, if (zOctet) "application/octet-stream" else MimeTypes.getMimeType(f.extension),
                 s, tid, gateKey != null, f.name, zSettleMs, zConnToken)
-                .also { if (zRecv) it.addHeader("X-LDX-ACK", "$tid." + TransferManager.resumeGenOf(tid)) }
         }
 
         val zipName = buildZipName(sources)
@@ -2574,16 +2559,10 @@ document.getElementById('pwd').focus();
         // logical delivery, exactly like every other download surface.
         val zipOctet   = s.parameters["octet"]?.firstOrNull() == "1"
         val zipHandoff = s.parameters["handoff"]?.firstOrNull() == "1"
-        // ── PASS 26 (receiver-acknowledged completion): same recv=1 rule as ──
-        // every other download surface (see apiQSDl's block) — a legacy-iOS
-        // page's own tracked ZIP receive completes on its finalization ack,
-        // never on the socket write alone.
-        val zipRecv = s.parameters["recv"]?.firstOrNull() == "1"
         val tid = TransferManager.claimOrStartActivePlainDownload(zipName, -1L, ip, peerName, null)
         if (gateKey != null) TransferManager.moveDownloadSlot(gateKey, tid)
-        if (zipRecv) TransferManager.markDownloadAckExpected(tid)
         if (zipHandoff) TransferManager.markHandoffEligible(tid)
-        val zipSettleMs = if (zipHandoff && !TransferManager.wasReAwaited(tid)) HANDOFF_SETTLE_MS else 0L
+        val zipSettleMs = handoffSettleMs(zipHandoff, tid, 0L)   // live-synthesized archive — size unknown at response time
         val zipConnToken = handoffConnCounter.incrementAndGet()
         if (zipHandoff && (TransferManager.wasReAwaited(tid) || TransferManager.liveConnectionCount(tid) > 1))
             TransferManager.markHandoffSuperseded(tid, zipConnToken)
@@ -2601,10 +2580,13 @@ document.getElementById('pwd').focus();
         // abandoned attempt correctly finalizes as failed, so a retry is
         // just a retry, not a duplicate success.
         val zipCompletedCleanly = java.util.concurrent.atomic.AtomicBoolean(false)
-
+        // ── PASS 28: the writer-side byte counter of the delivery gate ──
+        // (see ZipStreamDelivery) — an abandoned reader must never complete
+        // a row on an archive it did not fully read out of the pipe.
+        val zipWriterBytes = java.util.concurrent.atomic.AtomicLong(0L)
         val writer = Thread {
             try {
-                ZipOutputStream(BufferedOutputStream(pipeOut, 64 * 1024)).use { zos ->
+                ZipOutputStream(CountingOutputStream(BufferedOutputStream(pipeOut, 64 * 1024), zipWriterBytes)).use { zos ->
                     // Photos/videos/music/APKs are already compressed — spending CPU
                     // re-deflating them buys ~0% size reduction. NO_COMPRESSION keeps
                     // this fast and lag-free even on low-end phones acting as the host.
@@ -2641,10 +2623,24 @@ document.getElementById('pwd').focus();
             ProgressTrackingInputStream(if (zipSettleMs > 0) SettleStream(pipeIn, zipSettleMs, tid, zipConnToken) else pipeIn, tid, -1L) { readerOk ->
                 if (gateKey != null) TransferManager.releaseDownloadSlot(tid)
                 inFlightZips.remove(zipKey)
-                if (readerOk && zipCompletedCleanly.get()) {
+                // ── PASS 28 (browser-native download cancellation): the ──
+                // honest delivery gate + the honest abort path. A row
+                // completes ONLY when the reader genuinely read every byte
+                // the generation produced (ZipStreamDelivery — an abandoned
+                // reader always leaves its tail unread in the pipe, so the
+                // old "writer finished" gate alone completed rows for
+                // connections nobody was still receiving). And an abort is
+                // now CONNECTION-AWARE exactly like every other download
+                // surface: the plain fail() below predated the handoff
+                // semantics and resolved a download-manager stop as a hard
+                // FAILED regardless of context — the same
+                // downloadConnectionAborted call every other surface uses
+                // now decides interception-re-await vs. the Pass-17 verdict
+                // (page-alive browser cancel vs. network death) here too.
+                if (readerOk && ZipStreamDelivery.deliveredFully(zipCompletedCleanly.get(), zipWriterBytes.get(), zipTrack?.bytesRead ?: -1L)) {
                     TransferManager.stampFinalSize(tid, zipTrack?.bytesRead ?: -1L)
                     TransferManager.complete(tid)
-                } else TransferManager.fail(tid)
+                } else TransferManager.downloadConnectionAborted(tid)
             }.also { zipTrack = it }).also { r ->
             r.addHeader("Content-Disposition", dispositionAttachment(zipName))
             r.addHeader("Cache-Control", "no-store")
@@ -2655,9 +2651,6 @@ document.getElementById('pwd').focus();
             // attempt would otherwise just restart a full zip generation
             // from scratch, wasting a generation's worth of work per try).
             r.addHeader("Accept-Ranges", "none")
-            // ── PASS 26: the ack attempt identity for a recv=1 receive ──
-            // (see apiQSDl's identical header).
-            if (zipRecv) r.addHeader("X-LDX-ACK", "$tid." + TransferManager.resumeGenOf(tid))
         }
     }
 
@@ -3086,12 +3079,6 @@ document.getElementById('pwd').focus();
         // Slot identity moves onto the real transfer id so every later
         // release/force-release keys off the transfer itself.
         if (gateKey != null) TransferManager.moveDownloadSlot(gateKey, tid)
-        // ── PASS 26 (receiver-acknowledged completion): a recv=1 request is ──
-        // the legacy-iOS page's OWN tracked receive (see apiQSDl's identical
-        // block) — its completion is the receiver's POSTed finalization ack,
-        // never the socket write alone.
-        val recv = s.parameters["recv"]?.firstOrNull() == "1"
-        if (recv) TransferManager.markDownloadAckExpected(tid)
         if (handoff) TransferManager.markHandoffEligible(tid)
         // The settle delay exists ONLY for the first (webview) connection of
         // a handoff attempt — it holds the body back just long enough for
@@ -3100,7 +3087,7 @@ document.getElementById('pwd').focus();
         // connection whose bytes the interception is about to throw away.
         // A re-request for an already-re-awaited transfer skips it: that IS
         // the confirmed delivery and must start streaming immediately.
-        val settleMs = if (handoff && !TransferManager.wasReAwaited(tid)) HANDOFF_SETTLE_MS else 0L
+        val settleMs = handoffSettleMs(handoff, tid, file.length())
         val connToken = handoffConnCounter.incrementAndGet()
         // Phase 7 (§7.9): a second handoff-flagged request for this same
         // transfer — the DM's re-request claiming a re-awaited entry, or a
@@ -3131,7 +3118,6 @@ document.getElementById('pwd').focus();
         // is untouched.
         val inline = s.parameters["inline"]?.firstOrNull() == "1"
         return serveFileDownload(file, mime, s, tid, gateKey != null, if (inline) null else file.name, settleMs, connToken)
-            .also { if (recv) it.addHeader("X-LDX-ACK", "$tid." + TransferManager.resumeGenOf(tid)) }
     }
 
     // Registers one or more plain (non-Quick-Share) file/APK downloads as
@@ -3337,6 +3323,19 @@ document.getElementById('pwd').focus();
         override fun flush() { delegate.flush() }
         override fun close() { try { delegate.flush() } catch (ignored: Exception) {} ; delegate.close() }
     }
+
+    /** PASS 28 (browser-native download cancellation): counts every byte a
+     *  live-archive generation thread writes into its pipe, so the delivery
+     *  callback can demand the reader actually read EVERY byte the writer
+     *  produced (ZipStreamDelivery) — the writer-side half of the
+     *  abandoned-reader false-Completed fix; see ZipStreamDelivery's doc. */
+    private class CountingOutputStream(private val delegate: OutputStream,
+                                        private val counter: java.util.concurrent.atomic.AtomicLong) : OutputStream() {
+        override fun write(b: Int) { delegate.write(b); counter.incrementAndGet() }
+        override fun write(b: ByteArray, off: Int, len: Int) { delegate.write(b, off, len); counter.addAndGet(len.toLong()) }
+        override fun flush() { delegate.flush() }
+        override fun close() { try { delegate.flush() } catch (ignored: Exception) {} ; delegate.close() }
+    }
     private fun servedFixed(status: Status, mime: String, data: InputStream, len: Long): Response =
         SafeResponse(status, mime, data, len)
     private fun servedChunked(mime: String, data: InputStream, live: Boolean = false): Response =
@@ -3360,12 +3359,22 @@ document.getElementById('pwd').focus();
     // whose body was going to be thrown away, never to the download
     // manager's own confirmed re-request (wasReAwaited skips it) and never
     // to any ordinary browser download (handoff is never set for those).
-    private val HANDOFF_SETTLE_MS = 1100L
+    // ── PASS 27 (throughput inside the direct-download architecture) ─────────
+    // The settle decision now lives in DownloadSettlePolicy (pure, tested):
+    // only SMALL bodies need the pre-body hold that lets a download-manager
+    // interception's policy-cancel land before the body could complete on
+    // the connection the interception is about to throw away. Bodies of
+    // DownloadSettlePolicy.MAX_BYTES or more cannot plausibly finish inside
+    // that window on any link this app serves, so settling them only delayed
+    // every large direct download by ~1.1 s per item for zero protective
+    // value — that per-item cost is what this pass removes.
+    private fun handoffSettleMs(handoff: Boolean, tid: String, sizeBytes: Long): Long =
+        DownloadSettlePolicy.settleMs(handoff, TransferManager.wasReAwaited(tid), sizeBytes)
 
     /** Delays the delegate's first read by [delayMs], then passes straight
      *  through. Exists purely so a download-manager interception has time
      *  to cancel the connection before a small body completes on it; see
-     *  HANDOFF_SETTLE_MS. close() always propagates so the underlying
+     *  DownloadSettlePolicy.SETTLE_MS. close() always propagates so the underlying
      *  file descriptor is released regardless of whether the settle ever
      *  elapsed.
      *
@@ -8981,14 +8990,14 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 // from this build reading an older host keeps the old
                 // behavior by treating it as unknown-but-arrived.
                 if (t.requestedAtMs > 0L) row.put("rq", 1)
-                // Handoff re-await (enhanced-Safari receive): this PENDING
-                // entry is waiting for the BROWSER'S download manager to
-                // re-request the URL it intercepted — not waiting for a
-                // concurrency slot. The client renders an honest
-                // "Waiting for Safari…" label from this and times its own
-                // fallback (viewer path) off the same signal.
-                if (t.reAwaitUntilMs > 0L) row.put("ho", 1)
             }
+            // ── PASS 27 (the Active→Waiting fix): the handoff re-await ──
+            // keeps the row ACTIVE (the browser's download manager is
+            // taking over its intercepted download — a live receive, not a
+            // queue state), so the honest "Waiting for Safari…" indication
+            // rides the ho flag on the ACTIVE row itself. The client renders
+            // the label WITHOUT flipping the state out of Active.
+            if (t.reAwaitUntilMs > 0L) row.put("ho", 1)
             arr.put(row)
         }
         return arr
@@ -9628,48 +9637,6 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         return json(JSONObject().put("success", false))
     }
 
-    // ── PASS 26: the receiver's OWN finalization confirmation ────────────────
-    // POST /api/client-transfer/ack?t=<tid>&g=<gen> — sent by the legacy-iOS
-    // web client's tracked receive (the recv=1 XHR pump) the moment its own
-    // load genuinely finished, with the EXACT attempt identity the response
-    // carried in its X-LDX-ACK header ("<tid>.<gen>"). This is the only
-    // completion path an ack-expected DOWNLOAD row has: on a browser with no
-    // download manager (the iPad 4's stock iOS 10.3.3 Safari) a socket-write
-    // "success" proves nothing — that browser silently slurps-and-discards
-    // small attachment bodies and aborts large ones mid-stream, which is
-    // exactly the false-Completed / stuck-Waiting failure set this endpoint
-    // closes. The engine side (TransferManager.ackDownloadReceive) is
-    // attempt-scoped (a superseded attempt's late ack cannot complete a
-    // newer one), peer-validated (another client's stale ack cannot
-    // complete this client's row), and idempotent (a duplicate ack for an
-    // already-completed row is the honest success it already was).
-    private fun apiClientTransferAck(s: IHTTPSession): Response {
-        val ip = try { s.remoteIpAddress ?: "unknown" } catch (e: Exception) { "unknown" }
-        val tidParam = s.parameters["t"]?.firstOrNull()
-            ?: s.parameters["tid"]?.firstOrNull()
-            ?: return jsonErr("No tid")
-        val gen = s.parameters["g"]?.firstOrNull()?.toIntOrNull() ?: -1
-        if (gen < 0) return jsonErr("No attempt generation")
-        // Ownership check first (same rule as cancel): the ack must
-        // reference a live DOWNLOAD row of THIS client's own.
-        val tid = TransferManager.findLiveDownloadByIdAndPeer(tidParam, ip)
-        if (tid != null) {
-            val completed = TransferManager.ackDownloadReceive(tid, gen, ip)
-            return json(JSONObject().put("success", true).put("completed", completed))
-        }
-        // Not live — the honest verdict twin of cancel's late-answer path: an
-        // already-terminal row answers with the REAL verdict so the client's
-        // own bookkeeping resolves instead of guessing. A row that vanished
-        // entirely (old host memory, dismissed) answers the same shape.
-        val verdict = TransferManager.terminalStateFor(tidParam)
-        if (verdict != null) {
-            return json(JSONObject().put("success", true)
-                .put("state", verdict.name.lowercase())
-                .put("already", true))
-        }
-        return json(JSONObject().put("success", false))
-    }
-
     // ── Phase 7 of 10: handoff heartbeat sync (jailbroken-Safari pump) ───────
     // GET /api/client/handoff-sync?watch=<fileName>
     //
@@ -9711,7 +9678,10 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         val rows = JSONArray()
         for (t in live) {
             val row = JSONObject().put("i", t.id).put("n", t.fileName).put("s", statusStr(t.status))
-            if (t.status == TransferManager.Status.PENDING && t.reAwaitUntilMs > 0L) row.put("ho", 1)
+            // ── PASS 27: the re-await keeps rows ACTIVE — the honest
+            // handoff indication rides any live row in its window, not a
+            // demoted PENDING one (see the demotion-free re-await).
+            if (t.reAwaitUntilMs > 0L) row.put("ho", 1)
             // ── GOAT-PASS 3 (§2/§6): the beat now also reports the row's
             // deliberate pause — the legacy serial receive pump must FREE ITS
             // TURN when the host pauses the item it is shepherding (the batch
@@ -9732,23 +9702,21 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         val beat: JSONObject
         if (watch != null) {
             // Bind to the row the pump can still ACT on — a re-awaiting
-            // PENDING entry first (the one the beat extends), then any
-            // other PENDING, then ACTIVE. A terminal-only match is
-            // deliberately NOT the watch target: a just-finished same-named
-            // sibling must not hijack the binding; the fresh row lands
-            // within a beat or two and "none" keeps the pump waiting
-            // honestly in the meantime.
+            // entry first (ACTIVE since PASS 27's demotion-free re-await,
+            // the one the beat extends), then any other PENDING, then
+            // ACTIVE. A terminal-only match is deliberately NOT the watch
+            // target: a just-finished same-named sibling must not hijack
+            // the binding; the fresh row lands within a beat or two and
+            // "none" keeps the pump waiting honestly in the meantime.
             val candidates = live.filter { it.fileName == watch }
-            val target = candidates.firstOrNull {
-                    it.status == TransferManager.Status.PENDING && it.reAwaitUntilMs > 0L
-                } ?: candidates.firstOrNull { it.status == TransferManager.Status.PENDING }
+            val target = candidates.firstOrNull { it.reAwaitUntilMs > 0L }
+                ?: candidates.firstOrNull { it.status == TransferManager.Status.PENDING }
                 ?: candidates.firstOrNull { it.status == TransferManager.Status.ACTIVE }
             if (target != null) {
                 TransferManager.extendHandoffWindow(target.id)
                 beat = JSONObject().put("i", target.id).put("n", target.fileName)
                     .put("s", statusStr(target.status))
-                if (target.status == TransferManager.Status.PENDING && target.reAwaitUntilMs > 0L)
-                    beat.put("ho", 1)
+                if (target.reAwaitUntilMs > 0L) beat.put("ho", 1)
                 // GOAT-PASS 3 (§2/§6): same pause flag on the watched beat.
                 if (target.pauseRequested) beat.put("pd", 1)
             } else {
@@ -10080,18 +10048,13 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             val tid  = TransferManager.claimOrStartActivePlainDownload("$name.apk", apk.length(),
                 ip, getDeviceDisplayName(ip), apk.absolutePath, rangeStart = rangeStartOf(s))
             if (gateKey != null) TransferManager.moveDownloadSlot(gateKey, tid)
-            // ── PASS 26 (receiver-acknowledged completion): a recv=1 request ──
-            // is the legacy-iOS page's OWN tracked receive (see apiQSDl's
-            // identical block) — completion is its POSTed finalization ack.
-            val recv = s.parameters["recv"]?.firstOrNull() == "1"
-            if (recv) TransferManager.markDownloadAckExpected(tid)
             // Enhanced-Safari handoff — same two parameters apiDownload
             // documents in full; APKs are already a non-displayable type so
             // octet only matters for MIME consistency, but the handoff
             // semantics (connection-aware abort) apply identically.
             val handoff = s.parameters["handoff"]?.firstOrNull() == "1"
             if (handoff) TransferManager.markHandoffEligible(tid)
-            val settleMs = if (handoff && !TransferManager.wasReAwaited(tid)) HANDOFF_SETTLE_MS else 0L
+            val settleMs = handoffSettleMs(handoff, tid, apk.length())
             val connToken = handoffConnCounter.incrementAndGet()
             if (handoff && (TransferManager.wasReAwaited(tid) || TransferManager.liveConnectionCount(tid) > 1))
                 TransferManager.markHandoffSuperseded(tid, connToken)
@@ -10103,7 +10066,6 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             // a changed APK could in principle be range-stitched corrupt).
             return serveFileDownload(apk, "application/vnd.android.package-archive", s,
                 tid, gateKey != null, "$name.apk", settleMs, connToken)
-                .also { if (recv) it.addHeader("X-LDX-ACK", "$tid." + TransferManager.resumeGenOf(tid)) }
         } catch (e: Exception) { jsonErr("App not found: $pkg") }
     }
 
@@ -10850,21 +10812,6 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             peerName, item.filePath, rangeStart = rangeStartOf(s))
         if (gateKey != null) TransferManager.moveDownloadSlot(gateKey, tid)
 
-        // ── PASS 26 (receiver-acknowledged completion, the iPad 4 fix) ────────
-        // The legacy-iOS page's OWN tracked receive (the recv=1 XHR pump — the
-        // only receive a browser with no download manager, like the iPad 4's
-        // stock iOS 10.3.3 Safari, genuinely has) confirms finalization
-        // itself via POST /api/client-transfer/ack; completion may no longer
-        // rest on the socket write alone (see TransferManager.complete's ack
-        // conversion). Mutually exclusive with octet/handoff (the
-        // download-manager interception flow) and unknown to modern browsers
-        // — neither of those completion semantics changes by a byte. The ack
-        // attempt identity (tid + the CURRENT resume generation) rides back
-        // on the response's X-LDX-ACK header so the client's confirmation
-        // can never cross attempts.
-        val recv = s.parameters["recv"]?.firstOrNull() == "1"
-        if (recv) TransferManager.markDownloadAckExpected(tid)
-
         // Phase 3 of 10 (old-Safari tracked receive — see apiDownload's own
         // inline comment for the full rationale): a legacy iOS client that
         // taps "Get" on an image QS item fetches it inline=1 and shows it in
@@ -10886,13 +10833,20 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
         val octet   = s.parameters["octet"]?.firstOrNull() == "1"
         val handoff = s.parameters["handoff"]?.firstOrNull() == "1"
         if (handoff) TransferManager.markHandoffEligible(tid)
-        val settleMs = if (handoff && !TransferManager.wasReAwaited(tid)) HANDOFF_SETTLE_MS else 0L
+        // ── PASS 27 (throughput): the settle only guards SMALL bodies from ──
+        // completing on the connection a download-manager interception is
+        // about to cancel (see handoffSettleMs) — a large body cannot finish
+        // inside that window, so it streams immediately. A zip-batch's live-
+        // synthesized archive has no known size at response time, so it keeps
+        // the settle (a tiny folder zip is exactly the shape it protects).
+        val settleMs = handoffSettleMs(handoff, tid,
+            if (item.zipBatch != null) 0L else maxOf(item.size, 0L))
         val connToken = handoffConnCounter.incrementAndGet()
         if (handoff && (TransferManager.wasReAwaited(tid) || TransferManager.liveConnectionCount(tid) > 1))
             TransferManager.markHandoffSuperseded(tid, connToken)
         val serveMime = if (octet) "application/octet-stream" else item.mime
 
-        val resp = when {
+        return when {
             // ── GOAT-PASS 14 (Phase 1, §1.5/§1.7/§1.8): the app-side queue-batch ──
             // ZIP — ONE streamed archive synthesized live from the item's
             // immutable batch snapshot. The exact pipe/ZipOutputStream/
@@ -11069,9 +11023,13 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 // and silently retries, which must land as a failed attempt,
                 // not a phantom successful one).
                 val zipCompletedCleanly = java.util.concurrent.atomic.AtomicBoolean(false)
+                // ── PASS 28: writer-side counter of the delivery gate (see ──
+                // ZipStreamDelivery) — an abandoned reader must never complete
+                // a row on an archive it did not fully read out of the pipe.
+                val zipWriterBytes = java.util.concurrent.atomic.AtomicLong(0L)
                 val writer = Thread {
                     try {
-                        ZipOutputStream(BufferedOutputStream(pipeOut, 64 * 1024)).use { zos ->
+                        ZipOutputStream(CountingOutputStream(BufferedOutputStream(pipeOut, 64 * 1024), zipWriterBytes)).use { zos ->
                             zos.setLevel(java.util.zip.Deflater.NO_COMPRESSION)
                             val seen = HashSet<String>()
                             addZipNode(zos, node, "", seen, zipExclusions)
@@ -11090,7 +11048,16 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
                 var zipTrack: com.lumidrop.x.transfer.ProgressTrackingInputStream? = null
                 servedChunked("application/zip",
                     ProgressTrackingInputStream(if (settleMs > 0) SettleStream(pipeIn, settleMs, tid, connToken) else pipeIn, tid, -1L) { readerOk ->
-                        if (readerOk && zipCompletedCleanly.get()) {
+                        // ── PASS 28 (browser-native download cancellation): ──
+                        // the same honest delivery gate as apiZipStream — a
+                        // tiny archive finishes into the pipe buffer almost
+                        // instantly, so the OLD "reader not cancelled + writer
+                        // finished" gate completed the row even when the
+                        // connection had been abandoned (a user cancel from
+                        // the browser's Downloads section mid-transfer of a
+                        // small folder resolved as a false COMPLETED instead
+                        // of the cancellation verdict below).
+                        if (readerOk && ZipStreamDelivery.deliveredFully(zipCompletedCleanly.get(), zipWriterBytes.get(), zipTrack?.bytesRead ?: -1L)) {
                             TransferManager.stampFinalSize(tid, zipTrack?.bytesRead ?: -1L)
                             TransferManager.complete(tid)
                         } else TransferManager.downloadConnectionAborted(tid)
@@ -11228,12 +11195,6 @@ Write-Host ('Uninstall anytime: '+(Join-Path §dir 'uninstall.cmd'))
             }
             else -> { TransferManager.fail(tid); if (gateKey != null) TransferManager.releaseDownloadSlot(tid); jsonErr("File missing from filesystem") }
         }
-        // ── PASS 26: the ack attempt identity this receive's confirmation ──
-        // must carry ("<tid>.<gen>" — the gen captured at markDownloadAckExpected
-        // time). Only on a recv=1 response; every other request shape is
-        // byte-identical to before.
-        if (recv) resp.addHeader("X-LDX-ACK", "$tid." + TransferManager.resumeGenOf(tid))
-        return resp
     }
 
     /**

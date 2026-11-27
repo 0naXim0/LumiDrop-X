@@ -467,9 +467,22 @@ android {
         // content area can never resolve to the parent folder row — the
         // shared gesture's hit-test walks the expanded box as an exclusion
         // region.
-        versionCode 97
-        versionName "1.0.6"
-        // ── PRODUCTION FINAL PASS 26 (versionCode 97 — versionName 1.0.6): ══
+        // ══ PRODUCTION FINAL PASS 27 (versionCode 98 — versionName 1.0.7): ══
+        // The direct browser-download architecture RESTORED as the primary
+        // file-delivery mechanism (the Pass-26 JavaScript-mediated receive
+        // — the page accumulating the whole file in memory, then exporting
+        // it — is retired), the iPad 4 reliability fixes kept inside the
+        // restored architecture (the handoff re-await keeps its row ACTIVE
+        // — no more Active→Waiting flip, no byte zeroing, hard-capped
+        // window), the direct-download path's per-item settle cost removed
+        // for large bodies (the settle only guards small ones), the serving
+        // sockets tuned for Wi-Fi bulk streaming (TCP_NODELAY + 512KB
+        // SO_SNDBUF), and the release prepared as 1.0.7. versionCode 97:
+        // the next sequential code after 96 (versionName jumps 1.0.5→1.0.7
+        // per the release plan; the updater compares both correctly).
+        versionCode 98
+        versionName "1.0.7"
+        // ── PRODUCTION FINAL PASS 24 (versionCode 96 — versionName 1.0.5): ══
         // Unified selection-mode refinement across the Web Client. ROOT
         // CAUSE of "the thumbnail gets replaced with a checkmark" (audited,
         // real): the selection indicator on the Images grid and the Files

@@ -620,6 +620,7 @@ object TransferManager {
         cand.reconnecting = false
         cand.hasHole = false
         cand.reAwaitUntilMs = 0L
+        cand.reAwaitStartedAtMs = 0L
         cand.connectionCount.set(1)
         // ── GOAT-PASS 7 (§2B): the resumed leg's first byte re-latches the ──
         // sample baseline, so its first computed rate is pure streaming.
@@ -993,43 +994,19 @@ object TransferManager {
         // moment bytes flow again (addProgress) — the parked connection
         // resumed in place, the immunity is no longer needed.
         @Volatile var pauseParkedConn: Boolean = false
-        // ── PASS 26 (receiver-acknowledged completion, the iPad 4 fix) ───────
-        // The stock iOS 10.3.3 Safari on an iPad 4 has NO download manager and
-        // no <a download> support: an attachment response handed to that
-        // browser is silently slurped-and-discarded (small files) or aborted
-        // mid-body (large ones) — a socket-write "success" from THIS host's
-        // side proved NOTHING about the receiving side. The new client-side
-        // receive pump therefore requests the bytes itself (a tracked XHR
-        // into the page, "recv=1") and CONFIRMS finalization with an explicit
-        // POST /api/client-transfer/ack once its own load genuinely finished.
-        //   ackExpected — latched by the endpoint that served a request the
-        //     client explicitly flagged recv=1 (the page-JS receive). While
-        //     set, complete() may NOT finalize the row on the socket-write
-        //     path alone: the terminal callback arms the ack window instead
-        //     (below), and only ackDownloadReceive — the receiver's own
-        //     finalization confirmation — completes the row. Never set for
-        //     any modern-browser request, so their pipeline is bit-for-bit
-        //     unchanged; never set for octet/handoff (download-manager)
-        //     requests, so the enhanced-Safari interception flow is equally
-        //     unchanged.
-        //   ackGen — the resumeGen captured at markDownloadAckExpected time:
-        //     the attempt identity the ack must match. A re-opened row (an
-        //     interrupted receive's re-dispatch — reopenInterruptedDownload-
-        //     ForRange bumps resumeGen) is a NEWER attempt whose predecessor's
-        //     late ack (older gen) must not be able to complete it mid-flight,
-        //     and whose own fresh recv=1 request re-marks with the new gen.
-        //   ackDeadlineMs — 0 while the stream is still delivering; armed by
-        //     the terminal success callback (the conversion inside complete())
-        //     to now + DOWNLOAD_ACK_GRACE_MS. The stall sweep resolves the row
-        //     FAILED-interrupted past it (an honest interruption: the bytes
-        //     left the socket but the receiver never confirmed finalization),
-        //     never COMPLETED — and within it the row is left alone, still
-        //     genuinely "Receiving". Idempotent-by-construction: a duplicate
-        //     terminal callback finds the deadline already armed and re-arms
-        //     nothing.
-        @Volatile var ackExpected: Boolean = false
-        @Volatile var ackGen: Int = -1
-        @Volatile var ackDeadlineMs: Long = 0L
+        // ── PASS 27 (the Active→Waiting fix) ─────────────────────────────────
+        // Wall-clock anchor of the FIRST handoff re-await on this row (the
+        // interception's cancel — the browser download manager is about to
+        // re-request the URL). The re-await now keeps the row ACTIVE (the
+        // old demotion to PENDING + byte-zeroing read as the transfer
+        // leaving Active and wedging "Waiting…" at 0 KB — the reported
+        // starts-then-flips-back-to-Waiting regression); reAwaitUntilMs
+        // still bounds the wait, and handoff-sync beats may still extend it
+        // while a save sheet is being answered — this anchor CAPS those
+        // extensions so a browser that never re-claims can only ever hold
+        // the row for HANDOFF_REAWAIT_CAP_MS, then the stall sweep resolves
+        // it FAILED-interrupted, honestly, never silently.
+        @Volatile var reAwaitStartedAtMs: Long = 0L
 
         val progressPct: Int
             get() = when {
@@ -1798,6 +1775,7 @@ object TransferManager {
         // Handoff re-request claiming a re-awaited QS entry — same reasoning
         // as claimPendingPlainDownload's identical line.
         candidate.reAwaitUntilMs = 0L
+        candidate.reAwaitStartedAtMs = 0L
         // Phase 7 (§7.9): the claiming request IS one live connection. After
         // a re-await the counter reads 0 (the aborted first connection
         // decremented it on the way out), so without this reset the DM's
@@ -1870,6 +1848,7 @@ object TransferManager {
             if (it.transferredBytes == 0L && System.currentTimeMillis() - it.lastSampleAtMs > 2500L) {
                 it.connectionCount.set(1)
                 it.reAwaitUntilMs = 0L
+                it.reAwaitStartedAtMs = 0L
                 // ── GOAT-PASS 7 (§2B): the healing request is this row's ──
                 // delivery now — its first byte latches a clean baseline.
                 armSpeedBaseline(it)
@@ -1891,6 +1870,7 @@ object TransferManager {
                 it.transferredBytes = 0L
                 it.hasHole = false
                 it.reAwaitUntilMs = 0L
+                it.reAwaitStartedAtMs = 0L
                 // ── GOAT-PASS 7 (§2B): the replacement leg's first byte ──
                 // latches a clean baseline (see armSpeedBaseline).
                 armSpeedBaseline(it)
@@ -1986,6 +1966,7 @@ object TransferManager {
         // plain retry after one — either way it is a REAL request now, not
         // an expected one) and the short sweep deadline must no longer fire.
         candidate.reAwaitUntilMs = 0L
+        candidate.reAwaitStartedAtMs = 0L
         // Phase 7 (§7.9): the claiming request IS one live connection — see
         // claimPending's note for why the post-re-await counter must return
         // to exactly 1 here instead of streaming as an uncounted 0.
@@ -2082,6 +2063,7 @@ object TransferManager {
         t.cancelRequested = false
         t.interrupted = false
         t.reAwaitUntilMs = 0L
+        t.reAwaitStartedAtMs = 0L
         t.reAwaitedOnce = false
         t.handoffSupersededBelowConn = 0L
         t.connectionCount.set(1)
@@ -2576,84 +2558,9 @@ object TransferManager {
             fail(id, interrupted = true)
             return
         }
-        // ── PASS 26 (receiver-acknowledged completion, the iPad 4 fix) ─────
-        // The socket write is NOT the completion on a receiver-acked receive.
-        // A recv=1 request (the page's OWN tracked receive — the only way a
-        // browser with no download manager, like the iPad 4's stock iOS 10.3.3
-        // Safari, can genuinely take a file) carries its own finalization
-        // signal: the page CONFIRMS via POST /api/client-transfer/ack once
-        // its load truly finished. Hold the row ACTIVE here — an honest live
-        // receive at real progress — and arm the ack window; only
-        // ackDownloadReceive may complete it now. A window that closes with
-        // no ack resolves FAILED-interrupted (never COMPLETED), and the
-        // existing interrupted/reconnect regime owns the recovery after.
-        if (t.ackExpected && t.direction == Direction.DOWNLOAD && !t.cancelRequested) {
-            t.interrupted = false
-            t.reconnecting = false
-            if (t.ackDeadlineMs == 0L) t.ackDeadlineMs = System.currentTimeMillis() + DOWNLOAD_ACK_GRACE_MS
-            touchT(t)
-            return
-        }
         t.interrupted = false
         t.reconnecting = false
         finalizeCompletedBody(t)
-    }
-
-    // ── PASS 26 (receiver-acknowledged completion) ────────────────────────────
-    /** Marks a DOWNLOAD transfer as receiver-ack-expected — called by the
-     *  endpoint that served a request the web client explicitly flagged
-     *  "recv=1" (the legacy-iOS page's own tracked XHR receive; the ONLY
-     *  receive path a browser with no download manager — the iPad 4's stock
-     *  iOS 10.3.3 Safari — genuinely has). From this moment the row may not
-     *  complete on the socket-write path alone: [complete] arms the ack
-     *  window instead, and only [ackDownloadReceive] — the receiver's own
-     *  POSTed finalization confirmation — finalizes it. Also captures the
-     *  CURRENT [Transfer.resumeGen] as this attempt's ack generation, so an
-     *  ack minted by a superseded attempt (a re-opened/re-dispatched row
-     *  bumps the gen) can never complete the newer attempt mid-flight.
-     *  Modern-browser and octet/handoff (download-manager) requests never
-     *  call this — their completion semantics are unchanged. Idempotent:
-     *  a re-attached second recv=1 connection re-marks the same intent. */
-    @Synchronized
-    fun markDownloadAckExpected(id: String) {
-        val t = transfers[id] ?: return
-        if (t.direction != Direction.DOWNLOAD) return
-        t.ackExpected = true
-        t.ackGen = t.resumeGen
-        t.ackDeadlineMs = 0L   // in-flight again; the terminal callback re-arms it
-        touchT(t)
-    }
-
-    /** The receiver's OWN finalization confirmation (POST
-     *  /api/client-transfer/ack from the page whose tracked receive just
-     *  genuinely finished). Completes the row — the ONLY completion path an
-     *  ack-expected row has. Attempt-safe and idempotent by construction:
-     *   • the ack must reference THIS row's id (from the response's
-     *     X-LDX-ACK header of the very connection that received the bytes)
-     *     and the peer it was served to;
-     *   • it must match the attempt generation captured at mark time — a
-     *     re-opened row (an interrupted receive's re-dispatch) is a NEWER
-     *     attempt a predecessor's late ack must not complete;
-     *   • a duplicate ack (the row already completed via an earlier ack)
-     *     is a plain no-op false — completion stays idempotent;
-     *   • a stale ack for a row that already failed (the ack window
-     *     expired) or was cancelled changes nothing — the auto-resume
-     *     regime / the host's own decision owns that row now.
-     *  Returns true only when THIS call completed the row. */
-    @Synchronized
-    fun ackDownloadReceive(id: String, gen: Int, peerIp: String): Boolean {
-        val t = transfers[id] ?: return false
-        if (t.direction != Direction.DOWNLOAD || t.peerIp != peerIp) return false
-        if (t.status != Status.ACTIVE) return false          // already terminal or not live: idempotent no-op
-        if (!t.ackExpected) return false                    // not an ack-confirmed receive (modern/DM path)
-        if (t.ackGen != gen) return false                   // a superseded attempt's late ack
-        if (t.cancelRequested) return false                 // a cancel outranks any ack
-        t.ackExpected = false
-        t.ackDeadlineMs = 0L
-        t.interrupted = false
-        t.reconnecting = false
-        finalizeCompletedBody(t)
-        return true
     }
 
     /** FINAL PASS 3 (§1 — the real final size of a completed ZIP-streamed
@@ -2698,10 +2605,11 @@ object TransferManager {
         // genuinely arrived (a re-attached sibling or the retry delivered
         // the remainder), so the challenge is moot.
         t.verdictPending = false
-        // ── PASS 26: a terminal row has no ack debt — a late duplicate ack
-        // finds the flags already clear and idempotently no-ops.
-        t.ackExpected = false
-        t.ackDeadlineMs = 0L
+        // ── PASS 27: a terminal row leaves no handoff re-await deadline ──
+        // behind (the demotion-free re-await keeps rows ACTIVE, so terminal
+        // bookkeeping must clear it just like every other live latch).
+        t.reAwaitUntilMs = 0L
+        t.reAwaitStartedAtMs = 0L
         if (t.totalBytes >= 0) t.transferredBytes = t.totalBytes
         t.finishedAt = System.currentTimeMillis()
         t.speedBps = 0.0
@@ -2795,12 +2703,12 @@ object TransferManager {
         val t = transfers[id] ?: return
         if (t.status != Status.ACTIVE && t.status != Status.PENDING) return
         val wasHostCancelled = t.cancelRequested
-        // ── PASS 26 (receiver-acknowledged completion): a failed row's ack ──
-        // debt dies with the attempt — a late ack for the failed attempt must
-        // not be able to complete it (a re-dispatch re-marks with the NEW
-        // generation through markDownloadAckExpected on its own request).
-        t.ackExpected = false
-        t.ackDeadlineMs = 0L
+        // ── PASS 27: a failed row's handoff re-await dies with the attempt ──
+        // (the demotion-free re-await below keeps the row ACTIVE, so a row
+        // reaching this terminal state must leave no live re-await deadline
+        // behind for any sweep to consult).
+        t.reAwaitUntilMs = 0L
+        t.reAwaitStartedAtMs = 0L
         // ── Pass-11 (auto-reconnect root fix) ────────────────────────────────
         // A genuine INTERRUPTION must no longer latch cancelRequested. The
         // latch is what isCancelled() reads, and isCancelled() drives every
@@ -3220,8 +3128,34 @@ object TransferManager {
         // the honest interrupted/WFR when it cannot. Bytes flowing again at
         // any point (the browser's retry landing, a sibling connection)
         // simply clear the flag and the row continues as if nothing happened.
+        //
+        // ── PASS 28 (browser-native download cancellation, the routing ──
+        // fix): a HANDOFF row whose abort is NOT the first interception
+        // cancel belongs HERE too. The discrimination is the row's own
+        // reAwaitedOnce latch:
+        //   • Case A — reAwaitedOnce is FALSE at the abort: the dying
+        //     connection is the webview's first load, and the download
+        //     manager's cancel-then-re-request pattern is still IN FLIGHT
+        //     (the re-request arrives within ~a second of the cancel, or a
+        //     save sheet is being answered). This is the handoff branch
+        //     below — the Pass-27 re-await, unchanged.
+        //   • Case B — reAwaitedOnce is TRUE at the abort: this row already
+        //     went through its interception cycle; the dying connection IS
+        //     (or follows) the download manager's CONFIRMED delivery — so no
+        //     re-request is the expected pattern anymore. This is a stop of
+        //     the actual download: on the iPad 4 it is exactly the user
+        //     cancelling from the browser's own Downloads section while the
+        //     page lives on. Holding it in "Waiting for Safari…" for the
+        //     re-await window (up to the 60 s cap) was the reported
+        //     "cancelled from the browser but still shows as waiting in the
+        //     Active tab" bug. Route it through the SAME verdict: page
+        //     answers the challenge → deliberate browser cancel (CANCELLED,
+        //     immediate for zero-byte stops, deferred-by-evidence-window for
+        //     with-byte stops so a download manager's own auto-resume still
+        //     dissolves it); page gone → the honest interruption the
+        //     auto-resume regime owns.
         if (t.status == Status.ACTIVE && !t.cancelRequested &&
-            t.direction == Direction.DOWNLOAD && !t.handoffEligible) {
+            t.direction == Direction.DOWNLOAD && (!t.handoffEligible || wasReAwaited(id))) {
             // Connection accounting FIRST, exactly like the plain-fail path
             // below: release THIS connection's claim and record its missing
             // span. A sibling still streaming means the transfer is alive —
@@ -3229,21 +3163,6 @@ object TransferManager {
             t.hasHole = true
             if (t.connectionCount.decrementAndGet() > 0) return
             if (t.totalBytes >= 0 && t.transferredBytes >= t.totalBytes) {
-                // ── PASS 26 (receiver-acknowledged completion) ──────────────
-                // On an ack-expected receive (the page's own recv=1 XHR), a
-                // delivered-everything abort STILL cannot complete the row —
-                // but every byte genuinely left the socket, so the receiver's
-                // own finalization ack is the only verdict left. Arm the ack
-                // window exactly like complete() does: the ack completes the
-                // row, and the deadline sweep resolves an ack that never
-                // lands as an honest interruption.
-                if (t.ackExpected) {
-                    t.interrupted = false
-                    t.reconnecting = false
-                    if (t.ackDeadlineMs == 0L) t.ackDeadlineMs = System.currentTimeMillis() + DOWNLOAD_ACK_GRACE_MS
-                    touchT(t)
-                    return
-                }
                 // Everything genuinely arrived before the abort — the same
                 // delivered-everything finalization the plain path takes.
                 finalizeCompletedBody(t)
@@ -3285,25 +3204,39 @@ object TransferManager {
         }
         if (t.handoffEligible && !t.cancelRequested) {
             if (t.connectionCount.decrementAndGet() > 0) return   // siblings still delivering
-            // Last connection gone — re-await the download manager's own
-            // re-request rather than declaring the delivery failed.
-            t.status = Status.PENDING
-            t.transferredBytes = 0
-            t.hasHole = false          // fresh re-await = fresh byte accounting
+            // ── PASS 27 (the Active→Waiting fix) — PASS 28 (scoped to Case A) ──
+            // PASS 28 routes a handoff abort whose row already re-awaited once
+            // (the download manager's confirmed delivery stopped — the user
+            // cancelling from the browser's own Downloads section) into the
+            // Pass-17 verdict regime ABOVE. What remains here is ONLY Case A:
+            // the FIRST interception abort, where the download manager
+            // canceled the webview load (connection #1) and is about to
+            // re-request the SAME URL through its own session (connection #2
+            // carries the payload). The old code demoted the row to PENDING
+            // here — zeroing the byte counter and rendering "Waiting for
+            // Safari…" as a QUEUE state — which read as the transfer visibly
+            // leaving Active and wedging there at 0 KB whenever the
+            // re-request was not confirmed instantly (the reported
+            // starts-then-immediately-returns-to-Waiting regression, and half
+            // the stuck-Waiting reports). The row is NOT waiting for a queue
+            // slot and NOT interrupted: it is a live receive whose
+            // browser-side download continuation is in flight. It therefore
+            // STAYS ACTIVE — same identity, same card, same progress — and
+            // only the bounded re-await deadline below (extended by
+            // handoff-sync beats while a save sheet is being answered,
+            // hard-capped at HANDOFF_REAWAIT_CAP_MS) can end it, as the
+            // honest FAILED-interrupted resolution in the stall sweep —
+            // never a silent wedge, never a phantom Waiting.
+            t.status = Status.ACTIVE
+            t.hasHole = false          // the canceled leg delivered nothing that counts
             t.interrupted = false
             t.reconnecting = false
             t.speedBps = 0.0
             t.lastSampleAtMs = System.currentTimeMillis()
-            t.lastSampleBytes = 0
+            t.lastSampleBytes = t.transferredBytes
+            if (t.reAwaitStartedAtMs == 0L) t.reAwaitStartedAtMs = t.lastSampleAtMs
             t.reAwaitUntilMs = t.lastSampleAtMs + HANDOFF_GRACE_MS
             t.reAwaitedOnce = true
-            // ── PASS 26: a re-awaited row follows the download-manager ──
-            // semantics from here (its re-request completes on socket write,
-            // like every octet/handoff request) — recv=1 and handoff=1 are
-            // mutually exclusive by construction; this clears the defensive
-            // case where both could ever be set on one row.
-            t.ackExpected = false
-            t.ackDeadlineMs = 0L
             prioritized.remove(id)
             touchT(t)
         } else {
@@ -3321,9 +3254,7 @@ object TransferManager {
             // included), FAILED only when the hole is real.
             t.hasHole = true
             if (t.connectionCount.decrementAndGet() > 0) return   // siblings still delivering
-            // ── PASS 26: belt-and-braces twin of the regime path above — an ──
-            // ack-expected row never completes on socket-write evidence alone.
-            if (!t.cancelRequested && !t.ackExpected && t.totalBytes >= 0 && t.transferredBytes >= t.totalBytes) {
+            if (!t.cancelRequested && t.totalBytes >= 0 && t.transferredBytes >= t.totalBytes) {
                 finalizeCompletedBody(t)
             } else {
                 // Non-cancel, non-handoff aborts of a DOWNLOAD now enter the
@@ -3433,8 +3364,16 @@ object TransferManager {
     @Synchronized
     fun extendHandoffWindow(id: String): Boolean {
         val t = transfers[id] ?: return false
-        if (t.status != Status.PENDING || t.reAwaitUntilMs <= 0L) return false
-        t.reAwaitUntilMs = System.currentTimeMillis() + HANDOFF_BEAT_EXTEND_MS
+        // ── PASS 27: the re-await keeps the row ACTIVE (see the demotion-free
+        // re-await in downloadConnectionAborted), so the beat extends an
+        // ACTIVE row's deadline — but never past the hard cap: a browser that
+        // never re-claims its intercepted download must not be able to keep
+        // a row alive forever by the mere existence of an open page's beats.
+        if (t.status != Status.ACTIVE || t.reAwaitUntilMs <= 0L) return false
+        val now = System.currentTimeMillis()
+        if (now >= t.reAwaitUntilMs) return false   // past the deadline — the sweep owns the verdict now
+        if (t.reAwaitStartedAtMs > 0L && now - t.reAwaitStartedAtMs >= HANDOFF_REAWAIT_CAP_MS) return false
+        t.reAwaitUntilMs = now + HANDOFF_BEAT_EXTEND_MS
         touch(t.peerIp)
         return true
     }
@@ -3749,12 +3688,11 @@ object TransferManager {
         t.cancelRequested = true
         t.reconnecting = false   // a deliberate cancel ends any reconnect loop's ownership of this row
         t.verdictPending = false   // Pass-17: the host's own decision outranks any pending verdict
-        // ── PASS 26 (receiver-acknowledged completion): a deliberate cancel ──
-        // outranks any in-flight ack too — the row is CANCELLED, and a late
-        // receiver ack for the cancelled attempt must not be able to complete
-        // it out from under the host's own decision.
-        t.ackExpected = false
-        t.ackDeadlineMs = 0L
+        // ── PASS 27: a deliberate cancel also ends any in-flight handoff ──
+        // re-await — the row is CANCELLED; nothing may keep its deadline
+        // alive under the host's own decision.
+        t.reAwaitUntilMs = 0L
+        t.reAwaitStartedAtMs = 0L
         prioritized.remove(id)
         // ── Pass-15 (ghost-item root fix, sender half): the durable tid ──
         // latch — the row auto-dismisses 400 ms below, and every reader of
@@ -5706,28 +5644,13 @@ object TransferManager {
             scheduleAutoRemoval(it.id, FAILED_DOWNLOAD_LINGER_MS)
             touch(it.peerIp)
         }
-        // Handoff re-await deadline: a download whose first (webview)
-        // connection aborted at the interception point reverts to PENDING
-        // expecting the browser's download manager to re-request the SAME
-        // URL within HANDOFF_GRACE_MS. If that window closes with no
-        // re-request, this browser genuinely has no download manager taking
-        // the file (stock iOS 10 Safari is the canonical case) — finalize
-        // the entry FAILED so the client's own fallback path can take over,
-        // rather than leaving a "Waiting" row that nothing will ever move.
-        // Its own filter (not the generic 5-minute staleness above, which
-        // only ever catches it minutes later) so the failure reason stays
-        // distinguishable in the log.
-        transfers.values.filter {
-            it.status == Status.PENDING && it.direction == Direction.DOWNLOAD &&
-                it.reAwaitUntilMs > 0L && now > it.reAwaitUntilMs
-        }.forEach {
-            it.status = Status.FAILED
-            it.finishedAt = now
-            it.reAwaitUntilMs = 0L
-            prioritized.remove(it.id)
-            scheduleAutoRemoval(it.id, FAILED_DOWNLOAD_LINGER_MS)
-            touch(it.peerIp)
-        }
+        // ── PASS 27: the handoff re-await deadline branch that lived here ──
+        // (PENDING + reAwaitUntilMs → FAILED) is RETIRED: the re-await no
+        // longer demotes the row to PENDING (the demotion-free re-await in
+        // downloadConnectionAborted — the Active→Waiting fix), so its
+        // deadline is owned by sweepStalledActive's DOWNLOAD branch, where
+        // the ACTIVE re-await row is held honestly for its window and then
+        // resolved FAILED-interrupted past it.
         // ── Pass-22 (#6 — orphaned native SEND rows) ─────────────────────────
         // A PENDING SEND row whose session machinery no longer owns it can
         // never be claimed or resolved by anything — without this sweep it
@@ -5838,18 +5761,13 @@ object TransferManager {
     // frees its concurrency slot in seconds instead of most of a minute.
     private const val STALL_TIMEOUT_MS = 15_000L
     private const val STALL_CHECK_INTERVAL_MS = 5_000L
-    // ── PASS 26 (receiver-acknowledged completion) ─────────────────────────────
-    // How long an ackExpected DOWNLOAD row may sit with its bytes fully
-    // delivered but no receiver finalization ack yet, before the stall sweep
-    // resolves it FAILED-interrupted (the honest interruption — never a
-    // phantom COMPLETED: a socket-write "success" that the receiving side
-    // never confirmed is provably not a completion on a browser that cannot
-    // download). Sized generously past the healthy path (the ack POST fires
-    // within ~a second of the client-side load completing — the window only
-    // ever really opens when the page died between receiving the last byte
-    // and confirming) and far below the auto-resume window, so the row lands
-    // in the same resumable regime any other interrupted receive uses.
-    private const val DOWNLOAD_ACK_GRACE_MS = 20_000L
+    // ── PASS 27 (the Active→Waiting fix) ─────────────────────────────────────
+    // Hard cap on how long a handoff re-await may be extended by the client's
+    // handoff-sync beats while the browser's download manager has the file
+    // (a save sheet being answered is human time — generous; a browser that
+    // never re-claims must not wedge the row forever). The stall sweep
+    // resolves a capped-out re-await FAILED-interrupted, honestly.
+    private const val HANDOFF_REAWAIT_CAP_MS = 60_000L
     // Pass-11: a SEND row's stall bound = the sender's auto-resume window
     // (10 min, mirrors NativePushClient.AUTO_RESUME_WINDOW_MS) plus a
     // margin — see sweepStalledActive's SEND branch for why the ordinary
@@ -6003,13 +5921,6 @@ object TransferManager {
     private fun finalizeDeliveredEverythingIfNeeded(t: Transfer): Boolean {
         if (t.status != Status.ACTIVE || t.direction != Direction.DOWNLOAD) return false
         if (t.pauseRequested || t.handoffEligible) return false
-        // ── PASS 26 (receiver-acknowledged completion): an ack-expected row ──
-        // NEVER force-completes here, however full its counter — a socket-write
-        // "success" on a receiver-acked receive proves nothing about the
-        // receiving side (the iPad 4's stock Safari discards exactly such
-        // bodies). The row's own ack window (armed by complete()) or its
-        // honest FAILED-interrupted sweep resolution owns the verdict.
-        if (t.ackExpected) return false
         if (t.totalBytes <= 0L || t.transferredBytes < t.totalBytes) return false
         val now = System.currentTimeMillis()
         if (now - t.lastSampleAtMs < STALL_TIMEOUT_MS) return false
@@ -6082,25 +5993,26 @@ object TransferManager {
                     return@forEach
                 }
                 Direction.DOWNLOAD -> {
-                    // ── PASS 26 (receiver-acknowledged completion): the ack ──
-                    // window rules an ack-expected row's silence. With the
-                    // deadline armed (every byte left the socket; the receiver's
-                    // own finalization ack is the only verdict left), within the
-                    // window the row is an honest live receive at real progress —
-                    // leave it alone; past it the bytes left but the receiving
-                    // side never confirmed finalization, which is exactly an
-                    // interruption: FAILED-interrupted (the auto-resume regime
-                    // owns the recovery), NEVER a phantom COMPLETED.
-                    if (it.ackExpected && it.ackDeadlineMs > 0L) {
-                        if (now >= it.ackDeadlineMs) {
+                    // ── PASS 27 (the Active→Waiting fix, sweep half): a ──
+                    // handoff re-await keeps the row ACTIVE while the browser's
+                    // download manager takes over its intercepted download
+                    // (see the demotion-free re-await). Within the bounded
+                    // window (extended by handoff-sync beats while a save
+                    // sheet is being answered, hard-capped at
+                    // HANDOFF_REAWAIT_CAP_MS) the row is an honest live
+                    // receive — leave it alone. Past the window the browser
+                    // never re-claimed: resolve FAILED-interrupted (the
+                    // existing auto-resume regime owns the recovery),
+                    // never a phantom Waiting wedge, never COMPLETED.
+                    if (it.handoffEligible && it.reAwaitUntilMs > 0L) {
+                        if (now >= it.reAwaitUntilMs) {
+                            it.reAwaitUntilMs = 0L
+                            it.reAwaitStartedAtMs = 0L
                             fail(it.id, interrupted = true)
                             forceReleaseDownloadSlot(it.id)
                         }
                         return@forEach
                     }
-                    // ackExpected with NO deadline armed = the stream itself is
-                    // still (or was) in flight — the ordinary stall policy
-                    // below owns it unchanged.
                     // ── Pass-24 (delivered-everything rescue) ─────────────────────
                     // An ACTIVE row that already handed EVERY byte of the file
                     // to the socket but whose stream-close callback never

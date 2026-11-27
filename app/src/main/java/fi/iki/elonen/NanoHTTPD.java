@@ -2057,6 +2057,24 @@ public abstract class NanoHTTPD {
                     if (this.timeout > 0) {
                         finalAccept.setSoTimeout(this.timeout);
                     }
+                    // ── PASS 27 (throughput inside the direct-download ──
+                    // architecture): tune the accepted socket for bulk file
+                    // streaming. TCP_NODELAY — an HTTP server's standard: the
+                    // response is written in large coalesced chunks
+                    // (SafeResponse's 256KB buffering), and any small tail
+                    // write (chunked zips, SSE heartbeats) must never wait
+                    // on a 40ms Nagle delay. SO_SNDBUF 512KB — Wi-Fi's
+                    // bandwidth-delay product at this app's real transfer
+                    // rates (8-11 MB/s over a 10-25 ms RTT link ≈ 80-280 KB
+                    // in flight) exceeds many kernels' ~212KB default send
+                    // window, so the sender stalls on ACKs mid-stream; a
+                    // 512KB window covers it with margin while staying
+                    // far below memory-constraint territory (a few
+                    // concurrent browser connections ≈ a few MB of kernel
+                    // buffers). Loopback-verified no-regression (see
+                    // PRODUCTION-FINAL-PASS-27 §performance).
+                    try { finalAccept.setTcpNoDelay(true); } catch (SocketException ignored) { }
+                    try { finalAccept.setSendBufferSize(512 * 1024); } catch (SocketException ignored) { }
                     final InputStream inputStream = finalAccept.getInputStream();
                     NanoHTTPD.this.asyncRunner.exec(createClientHandler(finalAccept, inputStream));
                 } catch (IOException e) {

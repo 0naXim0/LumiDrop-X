@@ -16,3 +16,7 @@ keystore.properties
 .gradle/
 .private/
 signing.local.properties
+
+.gradle/
+.private/
+signing.local.properties

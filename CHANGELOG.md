@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.7 — version code 98
+
+- Published Production Final Pass 28.
+- Fixed cancellation handling for confirmed browser download-manager connections.
+- Added reliable Case-A/Case-B cancellation discrimination and honest verdict routing.
+- Prevented false Completed states for streamed ZIP deliveries by requiring reader delivery evidence.
+- Added Pass-28 browser-cancellation and ZIP-delivery regression coverage.
+- Preserved the official signing identity and increased the version code for seamless updates from v1.0.6.
+
 ## 1.0.6 — version code 97
 
 - Published Production Final Pass 26.
